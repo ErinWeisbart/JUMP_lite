@@ -1,0 +1,28 @@
+[project]
+name = "jump-annotated-download"
+version = "1.0.0"
+description = "Download JUMP Cell Painting compounds with Repurposing Hub annotations"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+authors = ["JUMP Core Team"]
+
+[dependencies]
+python = ">=3.10,<3.13"
+# Data handling
+pandas = ">=2.0.0"
+duckdb = ">=1.4.1,<2"
+# AWS S3 access (anonymous, no credentials needed)
+boto3 = ">=1.28.0"
+s3fs = ">=2024.0.0"
+# Image processing (for TIFF handling)
+tifffile = ">=2024.0.0"
+# Progress bars
+tqdm = ">=4.65.0"
+
+[tasks]
+# Download with dry-run (preview only)
+preview = "python download_annotated_samples.py --dry-run"
+# Download 10 sample compounds
+sample = "python download_annotated_samples.py --sample 10"
+# Download all compounds
+download-all = "python download_annotated_samples.py"
