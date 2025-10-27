@@ -1,6 +1,6 @@
 # JUMP Annotated Compounds Download - Standalone Example
 
-This is a minimal, standalone example for downloading JUMP Cell Painting compounds with Repurposing Hub annotations.
+This is a minimal, standalone example for downloading JUMP Cell Painting compounds with Repurposing Hub annotations and converting to compressed formats (Zarr, JXL, JPEG2000).
 
 ## What This Downloads
 
@@ -43,8 +43,14 @@ pixi run preview
 ### 3. Test with Sample
 
 ```bash
-# Download 10 compounds for testing (~1-5 GB, 5-10 minutes)
+# Download 10 compounds as TIFF only (~1-5 GB, 5-10 minutes)
 pixi run sample
+
+# Or download and convert to Zarr (recommended for PyTorch)
+pixi run sample-zarr
+
+# Or download and convert to JXL (best compression for archival)
+pixi run sample-jxl
 ```
 
 ### 4. Download All
@@ -52,6 +58,12 @@ pixi run sample
 ```bash
 # Download all 2,721 compounds (~100-200 GB, 1-3 hours)
 pixi run download-all
+
+# Or download all and convert to Zarr
+pixi run download-all-zarr
+
+# Or download all and convert to JXL (16-bit, best compression)
+pixi run download-all-jxl
 ```
 
 ## Command-Line Options
@@ -63,26 +75,64 @@ python download_annotated_samples.py --help
 # Common options:
 python download_annotated_samples.py --sample 20         # Download 20 compounds
 python download_annotated_samples.py --target kinase     # Filter by target
+python download_annotated_samples.py --format zarr_zstd  # Convert to Zarr (PyTorch)
+python download_annotated_samples.py --format jxl16      # Convert to JXL (archival)
+python download_annotated_samples.py --crop-size 768     # Crop to 768×768
 python download_annotated_samples.py --workers 32        # More parallel downloads
 python download_annotated_samples.py --output ./my_data  # Custom output directory
 python download_annotated_samples.py --dry-run           # Preview only
 ```
 
+### Compression Format Options
+
+Choose the format that best suits your needs:
+
+| Format | Compression | Speed | Quality | Best For |
+|--------|-------------|-------|---------|----------|
+| **zarr_zstd** | **4-5×** | **Fast (30ms)** | 8-bit | **PyTorch training** |
+| **zarr_lz4** | 3-4× | Fastest (20ms) | 8-bit | PyTorch (speed priority) |
+| **zarr16** | 2-3× | Fast (35ms) | 16-bit lossless | Lossless PyTorch |
+| **jxl16** | **5-6×** | Medium (100ms) | 16-bit lossless | **Archival storage** |
+| **jxl8** | 6-7× | Medium (80ms) | 8-bit | Visualization |
+| **jpeg2000** | 10× | Slow (200ms) | Lossy | Legacy compatibility |
+
+**Recommendations:**
+- **For deep learning**: Use `zarr_zstd` (best balance of speed and size)
+- **For archival**: Use `jxl16` (best compression with lossless quality)
+- **For speed**: Use `zarr_lz4` (fastest loading)
+- **For maximum compression**: Use `jpeg2000` (smallest files, slower)
+
 ## Examples
 
-### Download kinase inhibitors only
+### Download kinase inhibitors only (TIFF)
 ```bash
 python download_annotated_samples.py --target kinase --sample 20
 ```
 
-### Download EGFR inhibitors
+### Download EGFR inhibitors and convert to Zarr
 ```bash
-python download_annotated_samples.py --target EGFR
+python download_annotated_samples.py --target EGFR --format zarr_zstd
 ```
 
-### Download proteasome inhibitors
+### Download proteasome inhibitors and convert to JXL (best compression)
 ```bash
-python download_annotated_samples.py --target proteasome
+python download_annotated_samples.py --target proteasome --format jxl16
+```
+
+### Download with custom crop size
+```bash
+python download_annotated_samples.py \
+  --sample 10 \
+  --format zarr_lz4 \
+  --crop-size 512
+```
+
+### Download all kinase inhibitors as 8-bit JXL
+```bash
+python download_annotated_samples.py \
+  --target kinase \
+  --format jxl8 \
+  --crop-size 768
 ```
 
 ### Custom database path
@@ -100,11 +150,19 @@ data/
 │   ├── repurposing_hub_compounds.csv  # Compound info (2,721 rows)
 │   └── repurposing_hub_wells.csv      # Well locations (~75,000 rows)
 │
-└── repurposing_hub_tiff/
-    ├── PLATE_ID_1/
-    │   ├── *.tiff                     # 5-channel TIFF files
-    │   └── load_data.csv              # Metadata
-    ├── PLATE_ID_2/
+├── repurposing_hub_tiff/              # Downloaded TIFFs
+│   ├── PLATE_ID_1/
+│   │   ├── *.tiff                     # 5-channel TIFF files
+│   │   └── load_data.csv              # Metadata
+│   ├── PLATE_ID_2/
+│   └── ...
+│
+└── repurposing_hub_zarr/              # Converted Zarr (if --convert-to-zarr used)
+    ├── PLATE_ID_1.zarr/
+    │   ├── images/                    # Chunked array data
+    │   ├── .zarray                    # Array metadata
+    │   └── .zattrs                    # Attributes
+    ├── PLATE_ID_2.zarr/
     └── ...
 ```
 
@@ -116,8 +174,11 @@ data/
 | Wells | ~75,000 |
 | Sites | ~450,000 (6 per well) |
 | Plates | ~1,024 |
-| Size (TIFF) | ~100-200 GB |
+| Size (TIFF 16-bit) | ~100-200 GB |
+| Size (Zarr 8-bit, 768×768) | ~25-50 GB (75% smaller) |
+| Size (JXL 16-bit, 768×768) | ~15-30 GB (85% smaller, best compression) |
 | Download time | ~1-3 hours @ 100 MB/s |
+| Conversion time | ~1-3 hours (depends on format) |
 
 ## Top Targets
 
@@ -227,6 +288,34 @@ The dataset uses anonymous access (no credentials needed). If you get errors:
 2. Verify firewall allows AWS S3
 3. Try from a different network
 
+## Using Zarr Files with PyTorch
+
+After converting to Zarr, you can use the data for deep learning:
+
+### Option 1: Direct Zarr Loading (NumPy)
+
+```python
+import zarr
+import numpy as np
+
+# Open a Zarr store
+store = zarr.open('data/repurposing_hub_zarr/PLATE_ID.zarr', mode='r')
+
+# Access the images array
+images = store['images']  # Shape: (num_sites, 5, 768, 768)
+
+# Load a single site
+site_image = images[0]  # Shape: (5, 768, 768)
+# Channels: [DNA, RNA, ER, AGP, Mito]
+```
+
+### Option 2: PyTorch Dataset (Full Project)
+
+For a complete PyTorch DataLoader with augmentations, see the parent directory's full project which includes:
+- `dl/zarr_dataset.py` - PyTorch Dataset for Zarr files
+- `dl/dataloader.py` - DataLoader with augmentations
+- `dl/transforms.py` - Cell Painting-specific augmentations
+
 ## What's Different from the Full Project?
 
 This standalone example is simplified:
@@ -234,17 +323,18 @@ This standalone example is simplified:
 **Included:**
 - ✅ Metadata queries for annotated compounds
 - ✅ Parallel downloads from S3
+- ✅ Zarr conversion with compression
 - ✅ Resume support
 - ✅ Progress tracking
 - ✅ Manifest generation
 
 **Not Included:**
-- ❌ Zarr conversion (use full project for this)
-- ❌ PyTorch DataLoader (use full project for this)
+- ❌ PyTorch DataLoader utilities (see full project)
 - ❌ Image format conversion (JXL, JPEG2000)
 - ❌ Development tools (testing, linting)
+- ❌ Advanced augmentations
 
-For the full pipeline including Zarr conversion and PyTorch integration, see the parent directory.
+For the full pipeline with PyTorch DataLoader and training utilities, see the parent directory.
 
 ## Next Steps
 

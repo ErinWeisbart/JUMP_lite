@@ -16,13 +16,30 @@ boto3 = ">=1.28.0"
 s3fs = ">=2024.0.0"
 # Image processing (for TIFF handling)
 tifffile = ">=2024.0.0"
+pillow = ">=10.0.0"
+scikit-image = ">=0.21.0"
+numpy = ">=1.24.0"
+# Zarr for compressed storage
+zarr = ">=2.16.0"
+numcodecs = ">=0.12.0"
+python-blosc2 = ">=3.10.2,<4"
+# JPEG XL support via imagecodecs
+imagecodecs = ">=2024.0.0"
 # Progress bars
 tqdm = ">=4.65.0"
 
 [tasks]
 # Download with dry-run (preview only)
 preview = "python download_annotated_samples.py --dry-run"
-# Download 10 sample compounds
+# Download 10 sample compounds (TIFF only)
 sample = "python download_annotated_samples.py --sample 10"
+# Download 10 samples and convert to Zarr (recommended for PyTorch)
+sample-zarr = "python download_annotated_samples.py --sample 10 --format zarr_zstd"
+# Download 10 samples and convert to JXL (best compression)
+sample-jxl = "python download_annotated_samples.py --sample 10 --format jxl8"
 # Download all compounds
 download-all = "python download_annotated_samples.py"
+# Download all and convert to Zarr
+download-all-zarr = "python download_annotated_samples.py --format zarr_zstd"
+# Download all and convert to JXL
+download-all-jxl = "python download_annotated_samples.py --format jxl16"

@@ -20,6 +20,9 @@ Quick Start:
     # Download 10 sample compounds for testing
     python download_annotated_samples.py --sample 10
 
+    # Download and convert to Zarr (recommended for PyTorch)
+    python download_annotated_samples.py --sample 10 --convert-to-zarr
+
     # Download all 2,721 annotated compounds
     python download_annotated_samples.py
 
@@ -35,6 +38,13 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 from converter.download_manager import DownloadManager
+
+# Optional: Import Zarr converter (only needed if --convert-to-zarr is used)
+try:
+    from convert_to_zarr import convert_plate_to_zarr
+    ZARR_AVAILABLE = True
+except ImportError:
+    ZARR_AVAILABLE = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -221,6 +231,12 @@ Examples:
   # Filter by target (e.g., kinase inhibitors)
   python download_annotated_samples.py --target kinase --sample 20
 
+  # Download and convert to Zarr (recommended for PyTorch)
+  python download_annotated_samples.py --sample 10 --convert-to-zarr
+
+  # Download all and convert to Zarr with custom crop size
+  python download_annotated_samples.py --convert-to-zarr --crop-size 768
+
   # Custom output directory
   python download_annotated_samples.py --output ./my_data --sample 5
         """
@@ -259,8 +275,32 @@ Examples:
         action='store_true',
         help='Query and show what will be downloaded, but do not download'
     )
+    parser.add_argument(
+        '--format',
+        type=str,
+        default=None,
+        choices=['zarr_zstd', 'zarr_lz4', 'zarr16', 'jxl16', 'jxl8', 'jpeg2000'],
+        help='Convert to compressed format (default: None, download TIFFs only)'
+    )
+    parser.add_argument(
+        '--crop-size',
+        type=int,
+        default=768,
+        help='Center crop size for conversion (default: 768 for 768×768 images)'
+    )
+    # Deprecated but keep for backwards compatibility
+    parser.add_argument(
+        '--convert-to-zarr',
+        action='store_true',
+        help='(Deprecated) Use --format zarr_zstd instead'
+    )
 
     args = parser.parse_args()
+
+    # Handle deprecated --convert-to-zarr flag
+    if args.convert_to_zarr and not args.format:
+        args.format = 'zarr_zstd'
+        logger.warning("--convert-to-zarr is deprecated, use --format zarr_zstd instead")
 
     # Validate database path
     if not Path(args.db_path).exists():
@@ -342,14 +382,135 @@ Examples:
 
     print(f"Total size: {total_size_mb / 1024:.1f} GB")
 
-    print("\nOutput files:")
-    print(f"  Manifests:  {output_dir}")
-    print(f"  TIFF data:  {cache_dir}")
+    # Step 4: Convert to compressed format (if requested)
+    if args.format:
+        if not ZARR_AVAILABLE:
+            logger.error("Conversion requested but convert_to_zarr module not available")
+            logger.error("Make sure all dependencies are installed: pixi install")
+            sys.exit(1)
 
-    print("\nNext steps:")
-    print("  1. Review manifests in", output_dir)
-    print("  2. Use the TIFF files for analysis")
-    print("  3. Optionally convert to Zarr for PyTorch (see README)")
+        # Determine format details
+        format_name = args.format
+        if format_name.startswith('zarr'):
+            output_suffix = 'zarr'
+            file_extension = '.zarr'
+        elif format_name.startswith('jxl'):
+            output_suffix = 'jxl'
+            file_extension = '.jxl'
+        elif format_name == 'jpeg2000':
+            output_suffix = 'jp2'
+            file_extension = '.jp2'
+
+        print("\n" + "=" * 80)
+        print(f"CONVERTING TO {format_name.upper()} FORMAT")
+        print("=" * 80)
+        print(f"Configuration:")
+        print(f"  Format:     {format_name}")
+        print(f"  Crop size:  {args.crop_size}×{args.crop_size}")
+        print(f"  Plates:     {len(plates)}")
+        print("-" * 80)
+
+        converted_output_dir = Path(args.output) / f"repurposing_hub_{output_suffix}"
+        converted_output_dir.mkdir(parents=True, exist_ok=True)
+
+        converted_files = []
+        failed_plates = []
+
+        for i, (plate_id, plate_dir) in enumerate(plates.items(), 1):
+            print(f"\n[{i}/{len(plates)}] Converting plate: {plate_id}")
+
+            try:
+                # Check if load_data.csv exists
+                load_data_csv_path = plate_dir / "load_data.csv"
+                if not load_data_csv_path.exists():
+                    logger.warning(f"load_data.csv not found for {plate_id}, skipping")
+                    failed_plates.append(plate_id)
+                    continue
+
+                # Convert to specified format
+                convert_plate_to_zarr(
+                    input_dir=str(plate_dir),
+                    output_dir=str(converted_output_dir),
+                    plate_id=plate_id,
+                    format=format_name,
+                    load_data_csv=str(load_data_csv_path),
+                    sample_sites=None,
+                    crop_size=args.crop_size,
+                )
+
+                # Check for output file (Zarr is a directory, others are files)
+                if format_name.startswith('zarr'):
+                    output_path = converted_output_dir / f"{plate_id}{file_extension}"
+                else:
+                    output_path = converted_output_dir / plate_id
+
+                if output_path.exists():
+                    converted_files.append(output_path)
+                    print(f"  ✅ Converted to: {output_path.name}")
+                else:
+                    logger.warning(f"Output file not created for {plate_id}")
+                    failed_plates.append(plate_id)
+
+            except Exception as e:
+                logger.error(f"Failed to convert plate {plate_id}: {e}")
+                failed_plates.append(plate_id)
+                continue
+
+        # Conversion summary
+        print("\n" + "=" * 80)
+        print(f"{format_name.upper()} CONVERSION COMPLETE!")
+        print("=" * 80)
+        print(f"Successfully converted {len(converted_files)}/{len(plates)} plates\n")
+
+        if failed_plates:
+            print(f"⚠️  Failed to convert {len(failed_plates)} plates:")
+            for plate_id in failed_plates:
+                print(f"  - {plate_id}")
+            print()
+
+        # Calculate converted storage
+        total_converted_mb = 0
+        for converted_path in converted_files:
+            if converted_path.exists():
+                if converted_path.is_dir():  # Zarr
+                    size_mb = sum(
+                        f.stat().st_size for f in converted_path.rglob("*") if f.is_file()
+                    ) / (1024**2)
+                else:  # JXL/JP2 directory
+                    size_mb = sum(
+                        f.stat().st_size for f in converted_path.rglob("*") if f.is_file()
+                    ) / (1024**2)
+                total_converted_mb += size_mb
+
+        print(f"📊 Storage Summary:")
+        print(f"   TIFF:       {total_size_mb:.1f} MB ({cache_dir})")
+        if total_converted_mb > 0:
+            print(f"   {format_name.upper()}:       {total_converted_mb:.1f} MB ({converted_output_dir})")
+            reduction = ((total_size_mb - total_converted_mb) / total_size_mb) * 100
+            print(f"   Savings:    {reduction:.1f}% reduction vs TIFF")
+
+        print("\n📁 Output files:")
+        print(f"   Manifests:  {output_dir}")
+        print(f"   TIFF data:  {cache_dir}")
+        print(f"   {format_name.upper()} data:  {converted_output_dir}")
+
+        print("\n💡 Next steps:")
+        if format_name.startswith('zarr'):
+            print("   1. Use Zarr files for PyTorch training (see README)")
+        elif format_name.startswith('jxl'):
+            print("   1. Use JXL files for archival or visualization")
+        print("   2. Optionally delete TIFF cache to save space:")
+        print(f"      rm -rf {cache_dir}")
+
+    else:
+        print("\nOutput files:")
+        print(f"  Manifests:  {output_dir}")
+        print(f"  TIFF data:  {cache_dir}")
+
+        print("\nNext steps:")
+        print("  1. Review manifests in", output_dir)
+        print("  2. Use the TIFF files for analysis")
+        print("  3. To convert, run with --format [zarr_zstd|jxl16|jxl8|jpeg2000]")
 
 
 if __name__ == "__main__":
