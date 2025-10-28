@@ -1,6 +1,7 @@
 from functools import partial
-from pathlib import Path, PosixPath
+from pathlib import Path
 
+import numpy as np
 import polars as pl
 from joblib import Parallel, delayed
 from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
@@ -22,11 +23,14 @@ def get_metadata_batch(
     )
     concat = pl.concat(metadata)
 
-    return concat
+    return concat.select((*cols, "Metadata_JCP2022"))
 
 
-out_dir = Path("./output_images")
-out_dir.mkdir(parents=True, exist_ok=True)
+out_path = Path("./output_images")
+out_path.mkdir(parents=True, exist_ok=True)
+
+sample = 10  # No. of CRISPR and ORF to test
+seed = 1
 
 # Pull JCP ids
 crispr = (
@@ -39,6 +43,7 @@ crispr = (
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
+    .sample(sample, seed=seed)
 )
 orf = (
     pl.scan_csv(
@@ -50,6 +55,7 @@ orf = (
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
+    .sample(sample, seed=seed)
 )
 
 compound_selection = (
@@ -66,18 +72,24 @@ compound_selection = (
 gene_list = (*crispr, *orf)
 gene_rows = get_metadata_batch(gene_list)
 
-
 channels = ["DNA"]
-sites = [str(i) for i in range(1, 7)]  # 1->6
+sites = [str(i) for i in range(1, 7) if i == 1]  # 1->6
 correction = "Orig"
 
-compound_rows = get_metadata_batch(compound_selection)
 
 # %% Expensive!
-addressed, images = get_jump_image_batch(
-    compound_rows, channel=channels, site=sites, correction=correction
+addresses, images = get_jump_image_batch(
+    gene_rows, channel=channels, site=sites, correction=correction
 )
 
 # Re-do it for compounds
+# compound_rows = get_metadata_batch(compound_selection)
 
 # for k in zip(addressed, images):
+
+for i, (address, image) in enumerate(zip(addresses, images)):
+    fullname = "__".join(address)
+    np.savez(
+        out_path / fullname,
+        image,
+    )
