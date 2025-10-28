@@ -958,7 +958,7 @@ dev = [{ name = "jupyter", specifier = ">=1.1.1" }]
 
 [[package]]
 name = "jump-portrait"
-version = "0.0.28"
+version = "0.0.29"
 source = { editable = "../monorepo/libs/jump_portrait" }
 dependencies = [
     { name = "boto3" },
