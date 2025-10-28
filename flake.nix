@@ -1,9 +1,10 @@
 {
-  description = "2025 Best Practice: Pure uv for Python/PyPI Development on NixOS";
-
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs_master.url = "github:NixOS/nixpkgs/master";
+    systems.url = "github:nix-systems/default";
     flake-utils.url = "github:numtide/flake-utils";
+    flake-utils.inputs.systems.follows = "systems";
   };
 
   outputs =
@@ -11,35 +12,73 @@
       self,
       nixpkgs,
       flake-utils,
-    }:
+      systems,
+      ...
+    }@inputs:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        pkgs = import nixpkgs {
+          system = system;
+          config.allowUnfree = true;
+        };
+
+        mpkgs = import inputs.nixpkgs_master {
+          system = system;
+          config.allowUnfree = true;
+        };
+
+        libList = [
+          # Add needed packages here
+          pkgs.libz # Numpy
+          pkgs.stdenv.cc.cc
+          pkgs.libGL
+          pkgs.glib
+        ];
       in
+      with pkgs;
       {
-        devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
-            python312
-            uv
-            git
-            # System dependencies for binary wheels
-            zlib
-            stdenv.cc.cc.lib
-            # CBC solver for snakemake
-            cbc
-          ];
+        devShells = {
+          default =
+            let
+              # These packages get built by Nix, and will be ahead on the PATH
+              pwp = (
+                python3.withPackages (
+                  p: with p; [
+                    venvShellHook
+                  ]
+                )
+              );
+            in
+            mkShell {
+              NIX_LD = runCommand "ld.so" { } ''
+                ln -s "$(cat '${pkgs.stdenv.cc}/nix-support/dynamic-linker')" $out
+              '';
+              NIX_LD_LIBRARY_PATH = lib.makeLibraryPath libList;
+              packages = [
+                pwp
+                uv
+                pkgs.gcc
+              ]
+              ++ libList;
+              venvDir = "./.venv";
+              postVenvCreation = ''
+                unset SOURCE_DATE_EPOCH
+              '';
+              postShellHook = ''
+                unset SOURCE_DATE_EPOCH
+              '';
+              shellHook = ''
+                export UV_PYTHON=${pkgs.python3}
+                export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
+                export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
-          shellHook = ''
-            echo "uv Python Development Environment"
-            unset PYTHONPATH
-            uv sync
-          '';
-
-          LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath [
-            pkgs.zlib
-            pkgs.stdenv.cc.cc.lib
-          ]}";
+                uv sync --all-groups
+                export PYTHONPATH=${pwp}/${pwp.sitePackages}:$PYTHONPATH
+                runHook venvShellHook
+                source .venv/bin/activate
+              '';
+            };
         };
       }
     );
