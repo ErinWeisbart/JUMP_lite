@@ -7,14 +7,15 @@ from pooch import retrieve
 
 # Pull JCP ids
 crispr = (
-    pl.read_csv(
+    pl.scan_csv(
         retrieve(
             "https://github.com/jump-cellpainting/datasets/raw/refs/heads/main/metadata/crispr.csv.gz",
             known_hash="55e36e6802c6fc5f8e5d5258554368d64601f1847205e0fceb28a2c246c8d1ed",
         ),
     )
     .select(pl.col("Metadata_JCP2022"))
-    .with_columns(dataset=pl.lit("orf"))
+    .collect()
+    .to_series()
 )
 orf = (
     pl.scan_csv(
@@ -24,19 +25,18 @@ orf = (
         ),
     )
     .select(pl.col("Metadata_JCP2022"))
-    .with_columns(dataset=pl.lit("orf"))
     .collect()
+    .to_series()
 )
 
 compounds_selection = pl.scan_csv("metadata/repurposed_compounds.tsv", separator="\t")
 
-vals = crispr.to_numpy()[:, 0]
-
 metadata = Parallel(n_jobs=-1)(
     delayed(partial(get_item_location_metadata, input_column="JCP2022"))(x)
-    for x in vals
+    for x in (*crispr, *orf)
 )
 concat = pl.concat(metadata)
+
 cols = (
     "Metadata_Source",
     "Metadata_Batch",
@@ -52,7 +52,7 @@ uniq = concat.select(
 
 
 channels = ["DNA"]
-sites = ["1"]
+sites = [str(i) for i in range(1, 7)]  # 1->6
 correction = "Orig"
 rows = uniq.select(cols)
 
@@ -60,5 +60,7 @@ rows = uniq.select(cols)
 addressed, images = get_jump_image_batch(
     rows, channel=channels, site=sites, correction=correction
 )
+
+# Re-do it for compounds
 
 # for k in zip(addressed, images):
