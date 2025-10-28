@@ -1,0 +1,18 @@
+[project]
+name = "jump-core"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "jump-portrait>=0.0.27",
+    "pooch>=1.8.2",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+]
+
+[tool.uv.sources]
+jump-portrait = { path = "../monorepo/libs/jump_portrait", editable = true }
