@@ -1,9 +1,32 @@
 from functools import partial
+from pathlib import Path, PosixPath
 
 import polars as pl
 from joblib import Parallel, delayed
 from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
 from pooch import retrieve
+
+
+def get_metadata_batch(
+    perturbations: tuple[str],
+    cols=(
+        "Metadata_Source",
+        "Metadata_Batch",
+        "Metadata_Plate",
+        "Metadata_Well",
+    ),
+) -> pl.DataFrame:
+    metadata = Parallel(n_jobs=-1)(
+        delayed(partial(get_item_location_metadata, input_column="JCP2022"))(x)
+        for x in perturbations
+    )
+    concat = pl.concat(metadata)
+
+    return concat
+
+
+out_dir = Path("./output_images")
+out_dir.mkdir(parents=True, exist_ok=True)
 
 # Pull JCP ids
 crispr = (
@@ -29,36 +52,30 @@ orf = (
     .to_series()
 )
 
-compounds_selection = pl.scan_csv("metadata/repurposed_compounds.tsv", separator="\t")
-
-metadata = Parallel(n_jobs=-1)(
-    delayed(partial(get_item_location_metadata, input_column="JCP2022"))(x)
-    for x in (*crispr, *orf)
-)
-concat = pl.concat(metadata)
-
-cols = (
-    "Metadata_Source",
-    "Metadata_Batch",
-    "Metadata_Plate",
-    "Metadata_Well",
-)
-uniq = concat.select(
-    pl.col(
-        *cols,
-        "Metadata_JCP2022",
+compound_selection = (
+    pl.scan_csv(
+        "../metadata/repurposed_compounds.tsv",
+        separator="\t",
     )
-).unique(cols)
+    .select(pl.col("Metadata_JCP2022"))
+    .collect()
+    .to_series()
+)
+
+# %%
+gene_list = (*crispr, *orf)
+gene_rows = get_metadata_batch(gene_list)
 
 
 channels = ["DNA"]
 sites = [str(i) for i in range(1, 7)]  # 1->6
 correction = "Orig"
-rows = uniq.select(cols)
+
+compound_rows = get_metadata_batch(compound_selection)
 
 # %% Expensive!
 addressed, images = get_jump_image_batch(
-    rows, channel=channels, site=sites, correction=correction
+    compound_rows, channel=channels, site=sites, correction=correction
 )
 
 # Re-do it for compounds
