@@ -1,8 +1,17 @@
+"""
+Script to compress pulled tifs, grouping them by their site (bringing different channels into the same group).
+
+Things to try:
+- Group also by sites
+- Try a more complex filter combination, such as delta and LZMA2
+"""
+
 import lzma
 from itertools import groupby
 from pathlib import Path
+from pprint import pprint
 from shutil import rmtree
-from time.time import perf_counter
+from time import perf_counter
 
 import numpy
 import zarr
@@ -11,7 +20,7 @@ from PIL import Image
 from zarr.codecs import BloscCodec
 
 input_dir = Path("/home/amunoz/projects/JUMP_core/src/images/raw")
-output_dir = Path("./images")
+output_dir = Path("images")
 
 overwrite = True
 
@@ -21,13 +30,9 @@ output_dir.mkdir(parents=True, exist_ok=True)
 filters = [
     dict(id=lzma.FILTER_DELTA, dist=9),
     dict(id=lzma.FILTER_LZMA2, preset=9),
-    # dict(id=lzma.FILTER_DELTA, dist=2),
-    # dict(id=lzma.FILTER_LZMA2, preset=9),
 ]
-
-# compression_algs = {"jpegxl": Jpegxl}
 compressing_algs = {
-    # "lz4": {"clevel": 9},
+    # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
     "lz4hc": {"clevel": 9},
     "zstd": {"clevel": 9},
     "zlib": {"clevel": 9},
@@ -42,10 +47,6 @@ compressors = {
     "jpegxl": Jpegxl(),
     **compressors_blosc,
 }
-# imagecodecs_compresso  # rs = [
-#     # Delta(shape=test.shape, dtype=test.dtype, axis=1, dist=5),
-#     Brotli(level=11),
-# ]
 # for v in {
 #     "preset": {"preset": 9},
 #     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
@@ -53,7 +54,7 @@ compressors = {
 #     compressors[k]append(LZMA(**v))
 
 
-# %%
+# %% Group files based on their name
 
 key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
 
@@ -61,10 +62,8 @@ groups = {
     k: list(g)
     for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
 }
-# %%
-
+# %% Run compression and record time
 compression_time = {}
-decompression_time = {}
 for name, compressor in compressors.items():
     # numcodecs.register_codec(compressor)
     store_name = Path(output_dir) / f"{name}.zarr"
@@ -77,19 +76,22 @@ for name, compressor in compressors.items():
 
     t_start = perf_counter()
     store = zarr.storage.LocalStore(store_name)
+
+    # The API for codecs changed with Zarr 3
+    # https://github.com/cgohlke/imagecodecs/issues/123
+
     zarr_format = 3
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
     root = zarr.create_group(store=store, zarr_format=zarr_format)
     for key, items in groups.items():
+        [i for i in root.keys()]
         site_name = "__".join(key)
         nchannels = len(items)
         example_arr = numpy.array(Image.open(items[0]))
         shape = example_arr.shape
         dtype = example_arr.dtype
 
-        # The API for codecs changed with Zarr 3
-        # https://github.com/cgohlke/imagecodecs/issues/123
         arr = zarr.create_array(
             store=store,
             name=site_name,
@@ -106,7 +108,62 @@ for name, compressor in compressors.items():
         arr[:] = tmp_arr
 
     compression_time[name] = perf_counter() - t_start
+# %%
+decompression_time = {}
+for name in compressors.keys():
+    # numcodecs.register_codec(compressor)
+    store_name = Path(output_dir) / f"{name}.zarr"
+
+    store = zarr.storage.LocalStore(store_name)
 
     # TODO add decompression test
+    t_start = perf_counter()
 
-    # TODO Add size
+    root = zarr.group(store)
+    for k in root.keys():
+        tmp = root[k][:]
+
+    duration = perf_counter() - t_start
+    decompression_time[name] = duration
+
+print("Decompression time (seconds)")
+pprint(
+    {k: round(v, 2) for k, v in sorted(decompression_time.items(), key=lambda x: x[1])},
+    sort_dicts=False,
+)
+
+"""
+Decompression time (seconds)
+{'lz4hc': 1.33,
+ 'lz4': 1.47,
+ 'zstd': 1.95,
+ 'zlib': 4.84,
+ 'brotli': 8.89,
+ 'jpegxl': 23.93}
+"""
+# %%
+filesize = {}
+
+for name in (*compressors.keys(), "raw"):
+    if name != "raw":
+        name = f"{name}.zarr"
+    filesize[name] = sum(file.stat().st_size for file in (output_dir / name).rglob("*"))
+print("Filesize (fraction of raw)")
+max_val = max([x for x in filesize.values()])
+pprint(
+    {
+        Path(k).stem: round(v / max_val, 2)
+        for k, v in sorted(filesize.items(), key=lambda x: x[1])
+    },
+    sort_dicts=False,
+)
+"""
+Filesize (fraction of raw)
+{'jpegxl': 0.46,
+ 'zstd': 0.57,
+ 'zlib': 0.58,
+ 'brotli': 0.59,
+ 'lz4hc': 0.6,
+ 'lz4': 0.63,
+ 'raw': 1.0}
+"""
