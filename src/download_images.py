@@ -26,7 +26,7 @@ def get_metadata_batch(
     return concat.select((*cols, "Metadata_JCP2022"))
 
 
-out_path = Path("./output_images")
+out_path = Path("./images/raw")
 out_path.mkdir(parents=True, exist_ok=True)
 
 sample = 10  # No. of CRISPR and ORF to test
