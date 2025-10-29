@@ -29,7 +29,7 @@ def get_metadata_batch(
     return concat.select((*cols, "Metadata_JCP2022"))
 
 
-out_path = Path("./images/raw")
+out_path = Path("/work/datasets/jump_toy/raw")
 out_path.mkdir(parents=True, exist_ok=True)
 
 sample = 10  # No. of CRISPR and ORF to test
@@ -75,10 +75,9 @@ compound_selection = (
 gene_list = (*crispr, *orf)
 gene_rows = get_metadata_batch(gene_list).select(pl.exclude("Metadata_JCP2022"))
 
-channels = ["DNA", "ER", "Mito"]
-sites = [str(i) for i in range(1, 7) if i < 2]  # 1->6
+channels = ["DNA", "AGP", "Mito", "RNA", "ER"]
+sites = [str(i) for i in range(1, 7) if i % 3]  # 1->6
 correction = "Orig"
-
 
 # %% Expensive!
 addresses, images = get_jump_image_batch(
