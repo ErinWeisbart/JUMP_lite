@@ -17,6 +17,9 @@ def get_metadata_batch(
         "Metadata_Well",
     ),
 ) -> pl.DataFrame:
+    """
+    Pull metadata tables using as many processes as possible. Maps JCP id -> address (source, plate, well, sites)
+    """
     metadata = Parallel(n_jobs=-1)(
         delayed(partial(get_item_location_metadata, input_column="JCP2022"))(x)
         for x in perturbations
@@ -85,10 +88,10 @@ addresses, images = get_jump_image_batch(
 # Re-do it for compounds
 # compound_rows = get_metadata_batch(compound_selection)
 
-# for k in zip(addressed, images):
-# %%
+# %% Save files
 
 for i, (address, image) in enumerate(zip(addresses, images)):
+    # `address` is a tuple of (source, plate, well, channel, site)
     fullname = "__".join(address)
     pil_img = Image.fromarray(image)
     pil_img.save(out_path / f"{fullname}.tif")
