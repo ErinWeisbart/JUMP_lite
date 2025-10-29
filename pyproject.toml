@@ -16,4 +16,7 @@ dev = [
     "jupyter>=1.1.1",
 ]
 
+[tool.uv.sources]
+jump-portrait = { path = "../monorepo/libs/jump_portrait", editable = true }
+
 

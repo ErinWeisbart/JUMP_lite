@@ -23,11 +23,9 @@ from zarr.codecs import BloscCodec
 
 output_dir = Path("/work/datasets/jump_toy")
 input_dir = output_dir / "raw"
-
 overwrite = True
 
 output_dir.mkdir(parents=True, exist_ok=True)
-
 
 filters = [
     dict(id=lzma.FILTER_DELTA, dist=9),

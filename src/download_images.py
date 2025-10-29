@@ -1,11 +1,13 @@
 from functools import partial
 from pathlib import Path
+from time import perf_counter
 
 import polars as pl
 from joblib import Parallel, delayed
 from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
 from PIL import Image
 from pooch import retrieve
+from tqdm import tqdm
 
 
 def get_metadata_batch(
@@ -24,13 +26,15 @@ def get_metadata_batch(
         delayed(partial(get_item_location_metadata, input_column="JCP2022"))(x)
         for x in perturbations
     )
-    concat = pl.concat(metadata)
 
-    return concat.select((*cols, "Metadata_JCP2022"))
+    return [x.select((*cols, "Metadata_JCP2022")) for x in metadata]
 
 
-out_path = Path("/work/datasets/jump_toy/raw")
+out_path = Path("/work/datasets/jump_core/raw")
 out_path.mkdir(parents=True, exist_ok=True)
+
+meta_file = out_path.parent / "metadata.parquet"
+progress_file = out_path.parent / "progress.txt"
 
 sample = 10  # No. of CRISPR and ORF to test
 seed = 1
@@ -58,7 +62,7 @@ orf = (
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
-    .sample(sample, seed=seed)
+    # .sample(sample, seed=seed)
 )
 
 compound_selection = (
@@ -69,28 +73,71 @@ compound_selection = (
     .select(pl.col("Metadata_JCP2022"))
     .collect()
     .to_series()
+    .unique()
 )
 
 # %%
-gene_list = (*crispr, *orf)
-gene_rows = get_metadata_batch(gene_list).select(pl.exclude("Metadata_JCP2022"))
 
 channels = ["DNA", "AGP", "Mito", "RNA", "ER"]
-sites = [str(i) for i in range(1, 7) if i % 3]  # 1->6
+sites = [str(i) for i in range(1, 7) if i == 1]  # 1->6
 correction = "Orig"
 
-# %% Expensive!
-addresses, images = get_jump_image_batch(
-    gene_rows, channel=channels, site=sites, correction=correction
-)
+# Do not pull the mapper unless explicitly told to
+if not (meta_file).exists():
+    # %% Download metadata tables
+    print("Downloading gene metadata")
+    gene_list = (*crispr, *orf)
+    t_start = perf_counter()
+    gene_rows = get_metadata_batch(gene_list)
+    print(f"Done downloading gene metadata in {int(perf_counter() - t_start)} seconds")
 
-# Re-do it for compounds
-# compound_rows = get_metadata_batch(compound_selection)
+    # Compounds too
+    print("Downloading compound metadata")
+    t_start = perf_counter()
+    compound_rows = get_metadata_batch(compound_selection)
+    print(
+        f"Done downloading compound metadata in {int(perf_counter() - t_start)} seconds"
+    )
+    all_rows = (*gene_rows, *compound_rows)
 
-# %% Save files
+    metadata_all = pl.concat(all_rows)
+    metadata_all.write_parquet(meta_file)
+    print("Parquet saved. Will download images now.")
 
-for i, (address, image) in enumerate(zip(addresses, images)):
+else:
+    metadata_all = pl.read_parquet(meta_file)
+    all_rows = metadata_all.partition_by("Metadata_JCP2022")
+
+
+# %%
+def save_array(image, address: tuple[str]):
     # `address` is a tuple of (source, plate, well, channel, site)
     fullname = "__".join(address)
     pil_img = Image.fromarray(image)
     pil_img.save(out_path / f"{fullname}.tif")
+
+
+def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
+    try:
+        meta_nojcp = meta.select(pl.exclude("Metadata_JCP2022"))
+        addresses, images = get_jump_image_batch(
+            meta_nojcp, channel=channels, site=sites, correction=correction
+        )
+        for address, image in zip(addresses, images):
+            save_array(image, address)
+        return True
+    except:
+        return False
+
+
+fh = open(progress_file, "w")
+results = Parallel(n_jobs=30)(
+    delayed(
+        partial(
+            download_and_save_image, channel=channels, site=sites, correction=correction
+        )
+    )(x)
+    for x in tqdm(all_rows, total=len(all_rows), file=fh)
+)
+fh.close()
+progress_file.unlink()
