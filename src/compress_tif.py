@@ -21,8 +21,8 @@ from imagecodecs.numcodecs import Brotli, Jpegxl
 from PIL import Image
 from zarr.codecs import BloscCodec
 
-input_dir = Path("/home/amunoz/projects/JUMP_core/src/images/raw")
-output_dir = Path("images")
+output_dir = Path("/work/datasets/jump_toy")
+input_dir = output_dir / "raw"
 
 overwrite = True
 
@@ -58,11 +58,15 @@ compressors = {
 
 # %% Group files based on their name
 
-key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
+
+def select(x: str, ids: list[int] = [0, 1, 2, 3, 5]):
+    parts = x.split("__")
+    return [parts[y] for y in ids]
+
 
 groups = {
     k: list(g)
-    for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
+    for k, g in groupby(sorted(input_dir.glob("*.tif"), key=select), key=select)
 }
 # %% Run compression and record time
 compression_time = {}
