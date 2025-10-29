@@ -1,10 +1,10 @@
 from functools import partial
 from pathlib import Path
 
-import numpy as np
 import polars as pl
 from joblib import Parallel, delayed
 from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
+from PIL import Image
 from pooch import retrieve
 
 
@@ -70,10 +70,10 @@ compound_selection = (
 
 # %%
 gene_list = (*crispr, *orf)
-gene_rows = get_metadata_batch(gene_list)
+gene_rows = get_metadata_batch(gene_list).select(pl.exclude("Metadata_JCP2022"))
 
-channels = ["DNA"]
-sites = [str(i) for i in range(1, 7) if i == 1]  # 1->6
+channels = ["DNA", "ER", "Mito"]
+sites = [str(i) for i in range(1, 7) if i < 2]  # 1->6
 correction = "Orig"
 
 
@@ -86,10 +86,9 @@ addresses, images = get_jump_image_batch(
 # compound_rows = get_metadata_batch(compound_selection)
 
 # for k in zip(addressed, images):
+# %%
 
 for i, (address, image) in enumerate(zip(addresses, images)):
     fullname = "__".join(address)
-    np.savez(
-        out_path / fullname,
-        image,
-    )
+    pil_img = Image.fromarray(image)
+    pil_img.save(out_path / f"{fullname}.tif")
