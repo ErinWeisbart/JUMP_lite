@@ -4,6 +4,8 @@ Script to compress pulled tifs, grouping them by their site (bringing different 
 Things to try:
 - Group also by sites
 - Try a more complex filter combination, such as delta and LZMA2
+- Support multiple processes encoding/decoding
+- Test GPU encoding
 """
 
 import lzma
