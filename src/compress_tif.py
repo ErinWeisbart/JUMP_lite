@@ -10,63 +10,32 @@ Things to try:
 
 import lzma
 from itertools import groupby
+from joblib import Parallel, delayed
 from pathlib import Path
 from pprint import pprint
 from shutil import rmtree
 from time import perf_counter
-
+from tqdm import tqdm
 import numpy
 import zarr
-from imagecodecs.numcodecs import Brotli, Jpegxl
+try:
+    from imagecodecs.numcodecs import Brotli, Jpegxl
+    import numcodecs
+    # Register the codecs manually
+    numcodecs.register_codec(Brotli)
+    numcodecs.register_codec(Jpegxl)
+    IMAGECODECS_AVAILABLE = True
+except (ImportError, AttributeError):
+    IMAGECODECS_AVAILABLE = False
+    print("Warning: imagecodecs.numcodecs not available, skipping JpegXL and Brotli")
 from PIL import Image
 from zarr.codecs import BloscCodec
 
-input_dir = Path("/home/amunoz/projects/JUMP_core/src/images/raw")
-output_dir = Path("images")
 
-overwrite = True
-
-output_dir.mkdir(parents=True, exist_ok=True)
-
-
-filters = [
-    dict(id=lzma.FILTER_DELTA, dist=9),
-    dict(id=lzma.FILTER_LZMA2, preset=9),
-]
-compressing_algs = {
-    # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
-    "lz4hc": {"clevel": 9},
-    "zstd": {"clevel": 9},
-    "zlib": {"clevel": 9},
-}
-compressors_blosc = {
-    k: BloscCodec(cname=k, shuffle="bitshuffle", **v)
-    for k, v in compressing_algs.items()
-}
-
-compressors = {
-    "brotli": Brotli(level=11),
-    "jpegxl": Jpegxl(),
-    **compressors_blosc,
-}
-# for v in {
-#     "preset": {"preset": 9},
-#     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
-# }.values():
-#     compressors[k]append(LZMA(**v))
-
-
-# %% Group files based on their name
-
-key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
-
-groups = {
-    k: list(g)
-    for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
-}
-# %% Run compression and record time
-compression_time = {}
-for name, compressor in compressors.items():
+def compress_tif(name, compressor, output_dir, groups, overwrite=False):
+    """
+    Compress tifs using different algorithms and record time taken and resulting file size.
+    """
     # numcodecs.register_codec(compressor)
     store_name = Path(output_dir) / f"{name}.zarr"
     if store_name.exists():  # To overwrite
@@ -74,7 +43,6 @@ for name, compressor in compressors.items():
             rmtree(store_name)
         else:
             print(f"Skipping {name}")
-            continue
 
     t_start = perf_counter()
     store = zarr.storage.LocalStore(store_name)
@@ -86,7 +54,7 @@ for name, compressor in compressors.items():
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
     root = zarr.create_group(store=store, zarr_format=zarr_format)
-    for key, items in groups.items():
+    for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
         [i for i in root.keys()]
         site_name = "__".join(key)
         nchannels = len(items)
@@ -109,7 +77,74 @@ for name, compressor in compressors.items():
 
         arr[:] = tmp_arr
 
-    compression_time[name] = perf_counter() - t_start
+    return {name: perf_counter() - t_start}
+
+
+
+input_dir = Path("/work/datasets/jump_toy/raw")
+output_dir = input_dir.parent
+
+print("Input dir:", input_dir)
+print("Output dir:", output_dir)
+overwrite = True
+
+output_dir.mkdir(parents=True, exist_ok=True)
+
+
+filters = [
+    dict(id=lzma.FILTER_DELTA, dist=9),
+    dict(id=lzma.FILTER_LZMA2, preset=9),
+]
+compressing_algs = {
+    # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
+    "lz4hc": {"clevel": 9},
+    "zstd": {"clevel": 9},
+    "zlib": {"clevel": 9},
+}
+compressors_blosc = {
+    k: BloscCodec(cname=k, shuffle="bitshuffle", **v)
+    for k, v in compressing_algs.items()
+}
+
+compressors = {
+    **compressors_blosc,
+}
+
+# Add imagecodecs compressors if available
+if IMAGECODECS_AVAILABLE:
+    compressors.update({
+        # "brotli": Brotli(level=11),
+        "jpegxl_lossless": Jpegxl(lossless=True, level=9),
+        "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
+        "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
+        "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
+    })
+# for v in {
+#     "preset": {"preset": 9},
+#     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
+# }.values():
+#     compressors[k]append(LZMA(**v))
+
+
+# %% Group files based on their name
+
+key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
+
+groups = {
+    k: list(g)
+    for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
+}
+
+# Subsample groups for testing
+# groups = dict(list(groups.items())[:5]) 
+
+# %% Run compression and record time
+compression_time = Parallel(n_jobs=-1, prefer="threads")(
+    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite)
+    for name, compressor in compressors.items()
+)
+compression_time = {k: v for d in compression_time for k, v in d.items()}
+
 # %%
 decompression_time = {}
 for name in compressors.keys():
@@ -128,9 +163,9 @@ for name in compressors.keys():
     duration = perf_counter() - t_start
     decompression_time[name] = duration
 
-print("Decompression time (seconds)")
+print("Decompression time (milliseconds)")
 pprint(
-    {k: round(v, 2) for k, v in sorted(decompression_time.items(), key=lambda x: x[1])},
+    {k: round(v * 1000, 1) for k, v in sorted(decompression_time.items(), key=lambda x: x[1])},
     sort_dicts=False,
 )
 
@@ -154,7 +189,7 @@ print("Filesize (fraction of raw)")
 max_val = max([x for x in filesize.values()])
 pprint(
     {
-        Path(k).stem: round(v / max_val, 2)
+        Path(k).stem: round(v / max_val, 3)
         for k, v in sorted(filesize.items(), key=lambda x: x[1])
     },
     sort_dicts=False,
@@ -169,3 +204,5 @@ Filesize (fraction of raw)
  'lz4': 0.63,
  'raw': 1.0}
 """
+
+
