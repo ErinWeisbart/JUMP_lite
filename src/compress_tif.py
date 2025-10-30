@@ -14,10 +14,15 @@ from joblib import Parallel, delayed
 from pathlib import Path
 from pprint import pprint
 from shutil import rmtree
+
+from skimage.metrics import structural_similarity as ssim
 from time import perf_counter
 from tqdm import tqdm
 import numpy
 import zarr
+
+
+
 try:
     from imagecodecs.numcodecs import Brotli, Jpegxl
     import numcodecs
@@ -53,9 +58,8 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False):
     zarr_format = 3
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
-    root = zarr.create_group(store=store, zarr_format=zarr_format)
+    
     for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
-        [i for i in root.keys()]
         site_name = "__".join(key)
         nchannels = len(items)
         example_arr = numpy.array(Image.open(items[0]))
@@ -136,7 +140,7 @@ groups = {
 }
 
 # Subsample groups for testing
-# groups = dict(list(groups.items())[:5]) 
+# groups = dict(list(groups.items())[:2]) 
 
 # %% Run compression and record time
 compression_time = Parallel(n_jobs=-1, prefer="threads")(
@@ -206,3 +210,50 @@ Filesize (fraction of raw)
 """
 
 
+# compare compression quality
+
+# build raw array datastore
+original_data = {}
+for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
+    
+    site_name = "__".join(key)
+    nchannels = len(items)
+    example_arr = numpy.array(Image.open(items[0]))
+    shape = example_arr.shape
+    dtype = example_arr.dtype
+
+    tmp_arr = numpy.zeros((nchannels, *shape))
+    for i, img_path in enumerate(items):
+        tmp_arr[i] = numpy.array(Image.open(img_path))
+    
+    original_data[site_name] = tmp_arr
+
+#import pdb; pdb.set_trace()
+
+
+# Compute SSIM for each compression and visualize it
+
+for key in original_data.keys():
+    org_arr = original_data[key]
+
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(nrows=1+len(compressors), ncols=3, figsize=(18, 18))
+
+    for i, name in enumerate(compressors.keys()):
+        store_name = Path(output_dir) / f"{name}.zarr"
+        com_arr = zarr.open(store_name, mode='r')[key][:]
+
+        ssim_index = ssim(org_arr, com_arr, data_range=com_arr.max() - com_arr.min(), multichannel=True, channel_axis=0)
+        print(f"Compression: {name}, Site: {key}, SSIM: {ssim_index}")
+
+        # Make a visual comparison, show each channel side by side
+        axes[i,0].imshow(org_arr[0,:,:], cmap='gray')
+        #axes[i,0].set_title(f"Original - Site: {key}")
+        axes[i,1].imshow(com_arr[0,:,:], cmap='gray')
+        axes[i,1].set_title(f"SSIM: {ssim_index:.4f}  ")
+        axes[i,2].imshow(org_arr[0,:,:] - com_arr[0,:,:], cmap='gray')
+        axes[i,2].set_title(f"Difference ")
+    plt.tight_layout()
+    plt.savefig(f"comparison_{name}_{key}.png", dpi=300)
+    break
