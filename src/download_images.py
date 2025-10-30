@@ -79,7 +79,7 @@ compound_selection = (
 # %%
 
 channels = ["DNA", "AGP", "Mito", "RNA", "ER"]
-sites = [str(i) for i in range(1, 7) if i == 1]  # 1->6
+sites = [str(i) for i in range(1, 7)]  # 1->6
 correction = "Orig"
 
 # Do not pull the mapper unless explicitly told to
@@ -131,7 +131,7 @@ def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
 
 
 fh = open(progress_file, "w")
-results = Parallel(n_jobs=30)(
+results = Parallel(n_jobs=45)(
     delayed(
         partial(
             download_and_save_image, channel=channels, site=sites, correction=correction
