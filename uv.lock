@@ -1040,7 +1040,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "imagecodecs", specifier = ">=2025.8.2" },
-    { name = "jump-portrait", editable = "../monorepo/libs/jump_portrait" },
+    { name = "jump-portrait", specifier = ">=0.0.29" },
     { name = "pooch", specifier = ">=1.8.2" },
     { name = "zarr", specifier = ">=3.1.3" },
 ]
@@ -1051,7 +1051,7 @@ dev = [{ name = "jupyter", specifier = ">=1.1.1" }]
 [[package]]
 name = "jump-portrait"
 version = "0.0.29"
-source = { editable = "../monorepo/libs/jump_portrait" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boto3" },
     { name = "broad-babel" },
@@ -1065,30 +1065,10 @@ dependencies = [
     { name = "s3path" },
     { name = "tqdm" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3", specifier = ">=1.33.1" },
-    { name = "broad-babel", specifier = ">=0.1.28" },
-    { name = "joblib", specifier = ">=1.3.2,<2" },
-    { name = "matplotlib", specifier = ">=3.8.2,<4" },
-    { name = "numpy", specifier = "<2.0" },
-    { name = "polars", specifier = ">=1.5.0" },
-    { name = "pooch", specifier = ">=1.7.0,<2" },
-    { name = "pyarrow", specifier = ">=16.1.0" },
-    { name = "s3fs", specifier = ">=2024.6.0,<2025" },
-    { name = "s3path", specifier = ">=0.5.0,<0.6" },
-    { name = "tqdm", specifier = ">=4.66.1,<5" },
+sdist = { url = "https://files.pythonhosted.org/packages/82/fd/b865373a87837f3c50a774ae7d44920ed22acb9b49c7091ba67be81dc72c/jump_portrait-0.0.29.tar.gz", hash = "sha256:21c72bb4a090bcd228872976150fe9d80df4c52c44d1b7fd258f81673d2a18d5", size = 3824079, upload-time = "2025-10-28T19:20:21.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/85/5eb9f31a1f9f9cab76043435db09976b1d11a06e1ba4b0005520a7cb605a/jump_portrait-0.0.29-py3-none-any.whl", hash = "sha256:fa84710e6d644e6046207ee2b9e1f527c7544749a803ffa1523b8c7a5efc66c8", size = 3881042, upload-time = "2025-10-28T19:20:19.663Z" },
 ]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ipdb", specifier = ">=0.13.13,<0.14" },
-    { name = "jupyter", specifier = ">=1.0.0,<2" },
-    { name = "ruff", specifier = ">=0.3.2,<0.4" },
-    { name = "ruff-lsp", specifier = ">=0.0.48,<0.0.49" },
-]
-test = [{ name = "pytest", specifier = ">=7.4.4" }]
 
 [[package]]
 name = "jupyter"

@@ -56,9 +56,7 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False):
     zarr_format = 3
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
-    root = zarr.create_group(store=store, zarr_format=zarr_format)
     for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
-        [i for i in root.keys()]
         site_name = "__".join(key)
         nchannels = len(items)
         example_arr = numpy.array(Image.open(items[0]))
