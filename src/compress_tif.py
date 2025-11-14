@@ -120,8 +120,16 @@ if IMAGECODECS_AVAILABLE:
         # "brotli": Brotli(level=11),
         "jpegxl_lossless": Jpegxl(lossless=True, level=9),
         "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
+        "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
         "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
+        "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
         "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
+        "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
+        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
+        "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
+        "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
+        "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
+        "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
     })
 # for v in {
 #     "preset": {"preset": 9},
@@ -181,6 +189,25 @@ Decompression time (seconds)
  'zlib': 4.84,
  'brotli': 8.89,
  'jpegxl': 23.93}
+
+
+Decompression time (Milliseconds)
+{'lz4hc': 2194.9,
+ 'zstd': 2992.9,
+ 'zlib': 4841.3,
+ 'jpegxl_lossy_hq': 9817.7,
+ 'jpegxl_lossy_mq': 10320.9,
+ 'jpegxl_lossy_lq': 22086.8,
+ 'jpegxl_lossless': 37673.3}
+Filesize (fraction of raw)
+{'jpegxl_lossy_lq': 0.007,
+ 'jpegxl_lossy_mq': 0.012,
+ 'jpegxl_lossy_hq': 0.031,
+ 'jpegxl_lossless': 0.481,
+ 'zstd': 0.595,
+ 'zlib': 0.607,
+ 'lz4hc': 0.628,
+ 'raw': 1.0}
 """
 # %%
 filesize = {}
@@ -238,7 +265,7 @@ for key in original_data.keys():
 
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(nrows=1+len(compressors), ncols=3, figsize=(18, 18))
+    fig, axes = plt.subplots(nrows=len(compressors), ncols=3, figsize=(18, 6))
 
     for i, name in enumerate(compressors.keys()):
         store_name = Path(output_dir) / f"{name}.zarr"
@@ -249,9 +276,9 @@ for key in original_data.keys():
 
         # Make a visual comparison, show each channel side by side
         axes[i,0].imshow(org_arr[0,:,:], cmap='gray')
-        #axes[i,0].set_title(f"Original - Site: {key}")
+        axes[i,0].set_title(f"Original - Site: {key}")
         axes[i,1].imshow(com_arr[0,:,:], cmap='gray')
-        axes[i,1].set_title(f"SSIM: {ssim_index:.4f}  ")
+        axes[i,1].set_title(f"Name: {name}, SSIM: {ssim_index:.4f}  ")
         axes[i,2].imshow(org_arr[0,:,:] - com_arr[0,:,:], cmap='gray')
         axes[i,2].set_title(f"Difference ")
     plt.tight_layout()
