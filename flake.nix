@@ -21,6 +21,7 @@
         pkgs = import nixpkgs {
           system = system;
           config.allowUnfree = true;
+          config.cudaSupport = true;
         };
 
         mpkgs = import inputs.nixpkgs_master {
@@ -34,6 +35,9 @@
           pkgs.stdenv.cc.cc
           pkgs.libGL
           pkgs.glib
+          # CUDA packages
+          pkgs.cudaPackages.cudatoolkit
+          pkgs.cudaPackages.cudnn
         ];
       in
       with pkgs;
@@ -59,24 +63,37 @@
                 pwp
                 uv
                 pkgs.gcc
+                claude-code
               ]
               ++ libList;
-              venvDir = "./.venv";
-              postVenvCreation = ''
-                unset SOURCE_DATE_EPOCH
-              '';
-              postShellHook = ''
-                unset SOURCE_DATE_EPOCH
-              '';
               shellHook = ''
                 export UV_PYTHON=${pkgs.python3}
-                export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
                 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
-                uv sync --all-groups
-                export PYTHONPATH=${pwp}/${pwp.sitePackages}:$PYTHONPATH
-                runHook venvShellHook
+                # Set up CUDA environment variables
+                export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
+
+                # Find NVIDIA driver libraries
+                NVIDIA_DRIVER_LIB=$(find /nix/store -name "libcuda.so.1" 2>/dev/null | head -1 | xargs dirname)
+
+                export LD_LIBRARY_PATH=${pkgs.cudaPackages.cudatoolkit}/lib:${pkgs.cudaPackages.cudnn}/lib:$NVIDIA_DRIVER_LIB:$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
+                export EXTRA_LDFLAGS="-L${pkgs.cudaPackages.cudatoolkit}/lib"
+                export EXTRA_CCFLAGS="-I${pkgs.cudaPackages.cudatoolkit}/include"
+
+                # Create and activate venv
+                if [ ! -d .venv ]; then
+                  uv venv
+                fi
                 source .venv/bin/activate
+
+                # Now that venv is activated, sync dependencies
+                uv sync --all-groups
+
+                # Install PyTorch with CUDA support
+                uv pip install torch torchvision torchmetrics --index-url https://download.pytorch.org/whl/cu121
+
+                # Add PyTorch lib path
+                export LD_LIBRARY_PATH=.venv/lib/python3.13/site-packages/torch/lib:$LD_LIBRARY_PATH
               '';
             };
         };

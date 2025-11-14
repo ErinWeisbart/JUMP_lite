@@ -7,8 +7,19 @@ requires-python = ">=3.13"
 dependencies = [
     "imagecodecs>=2025.8.2",
     "jump-portrait>=0.0.29",
+    "lpips>=0.1.4",
+    "matplotlib>=3.0.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "pillow>=9.0.0",
     "pooch>=1.8.2",
+    "polars>=0.19.0",
+    "rich>=13.0.0",
     "scikit-image>=0.25.2",
+    "torch>=2.0.0",
+    "torchmetrics>=1.0.0",
+    "torchvision>=0.15.0",
+    "tqdm>=4.0.0",
     "zarr>=3.1.3",
 ]
 

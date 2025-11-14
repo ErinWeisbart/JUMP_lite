@@ -37,49 +37,64 @@ from PIL import Image
 from zarr.codecs import BloscCodec
 
 
-def compress_tif(name, compressor, output_dir, groups, overwrite=False):
+def compress_single_group(key, items, store_name, compressor, zarr_format):
+    """
+    Compress a single image group (site).
+    """
+    site_name = "__".join(key)
+    nchannels = len(items)
+    example_arr = numpy.array(Image.open(items[0]))
+    shape = example_arr.shape
+    dtype = example_arr.dtype
+
+    store = zarr.storage.LocalStore(store_name)
+
+    arr = zarr.create_array(
+        store=store,
+        name=site_name,
+        shape=(nchannels, *shape),
+        chunks=(nchannels, *shape),
+        dtype=dtype,
+        compressors=compressor,
+        zarr_format=zarr_format,
+    )
+    tmp_arr = numpy.zeros((nchannels, *shape))
+    for i, img_path in enumerate(items):
+        tmp_arr[i] = numpy.array(Image.open(img_path))
+
+    arr[:] = tmp_arr
+
+
+def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_inner=16):
     """
     Compress tifs using different algorithms and record time taken and resulting file size.
+    Uses parallel processing for group compression.
+
+    Args:
+        n_jobs_inner: Number of parallel jobs for group compression within each codec.
+                      Default 16 to avoid over-parallelization when running multiple codecs.
     """
-    # numcodecs.register_codec(compressor)
     store_name = Path(output_dir) / f"{name}.zarr"
     if store_name.exists():  # To overwrite
         if overwrite:
             rmtree(store_name)
         else:
             print(f"Skipping {name}")
+            return {name: 0}
 
     t_start = perf_counter()
-    store = zarr.storage.LocalStore(store_name)
 
     # The API for codecs changed with Zarr 3
     # https://github.com/cgohlke/imagecodecs/issues/123
-
     zarr_format = 3
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
-    
-    for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
-        site_name = "__".join(key)
-        nchannels = len(items)
-        example_arr = numpy.array(Image.open(items[0]))
-        shape = example_arr.shape
-        dtype = example_arr.dtype
 
-        arr = zarr.create_array(
-            store=store,
-            name=site_name,
-            shape=(nchannels, *shape),
-            chunks=(nchannels, *shape),
-            dtype=dtype,
-            compressors=compressor,
-            zarr_format=zarr_format,
-        )
-        tmp_arr = numpy.zeros((nchannels, *shape))
-        for i, img_path in enumerate(items):
-            tmp_arr[i] = numpy.array(Image.open(img_path))
-
-        arr[:] = tmp_arr
+    # Compress groups in parallel with limited parallelism to avoid thrashing
+    Parallel(n_jobs=n_jobs_inner, prefer="threads")(
+        delayed(compress_single_group)(key, items, store_name, compressor, zarr_format)
+        for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name, leave=False)
+    )
 
     return {name: perf_counter() - t_start}
 
@@ -151,8 +166,13 @@ groups = {
 # groups = dict(list(groups.items())[:2]) 
 
 # %% Run compression and record time
-compression_time = Parallel(n_jobs=-1, prefer="threads")(
-    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite)
+# Use limited parallelism: outer level = codecs (12), inner level = groups (16)
+# This prevents over-saturation: 12 * 16 = 192 max threads (matches CPU count)
+n_jobs_codecs = 32  # Number of codecs to compress in parallel
+n_jobs_groups = 16  # Number of groups to compress in parallel within each codec
+
+compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
+    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
     for name, compressor in compressors.items()
 )
 compression_time = {k: v for d in compression_time for k, v in d.items()}
@@ -235,6 +255,49 @@ Filesize (fraction of raw)
  'lz4': 0.63,
  'raw': 1.0}
 """
+
+# %% Save compression metrics to CSV and JSON for easy merging with quality metrics
+import pandas as pd
+import json
+
+# Create results directory
+results_dir = output_dir / "results"
+results_dir.mkdir(parents=True, exist_ok=True)
+
+# Prepare compression metrics data
+raw_size = filesize.get("raw", 0)
+compression_metrics = []
+
+for codec_name in compressors.keys():
+    codec_filesize = filesize.get(f"{codec_name}.zarr", 0)
+    compression_metrics.append({
+        'codec': codec_name,
+        'compression_time_sec': compression_time.get(codec_name, 0),
+        'decompression_time_sec': decompression_time.get(codec_name, 0),
+        'filesize_bytes': codec_filesize,
+        'filesize_ratio': codec_filesize / raw_size if raw_size > 0 else 0,
+        'compression_ratio': raw_size / codec_filesize if codec_filesize > 0 else 0,
+    })
+
+# Convert to DataFrame
+df_compression = pd.DataFrame(compression_metrics)
+
+# Sort by compression ratio (best first)
+df_compression = df_compression.sort_values('filesize_ratio')
+
+# Save to CSV
+csv_path = results_dir / "compression_metrics.csv"
+df_compression.to_csv(csv_path, index=False)
+print(f"\nCompression metrics saved to {csv_path}")
+
+# Save to JSON
+json_path = results_dir / "compression_metrics.json"
+df_compression.to_json(json_path, orient='records', indent=2)
+print(f"Compression metrics saved to {json_path}")
+
+# Print summary table
+print("\nCompression Metrics Summary:")
+print(df_compression.to_string(index=False))
 
 
 # compare compression quality
