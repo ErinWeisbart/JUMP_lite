@@ -197,6 +197,73 @@ def merge_metrics(results_dir: Path = Path("/work/datasets/jump_toy/results")):
     console.print(table)
     print("="*100)
 
+    # Save the table as markdown with color coding
+    md_path = results_dir / "metrics_combined.md"
+    with open(md_path, 'w') as f:
+        f.write("# Combined Compression and Quality Metrics\n\n")
+        f.write("Color Legend: 🟢 Best → 🟡 Average → 🔴 Worst\n\n")
+
+        # Create markdown table header
+        header = "| " + " | ".join(display_cols) + " |\n"
+        separator = "| " + " | ".join([":---:" if col != "codec" else ":---" for col in display_cols]) + " |\n"
+        f.write(header)
+        f.write(separator)
+
+        # Add rows with color emoji indicators
+        for _, row in display_df.iterrows():
+            row_data = []
+            for col in display_cols:
+                value = row[col]
+
+                if col == 'codec':
+                    row_data.append(str(value))
+                elif pd.isna(value):
+                    row_data.append("N/A")
+                else:
+                    # Get min/max for this column
+                    col_values = display_df[col].dropna()
+                    min_val = col_values.min()
+                    max_val = col_values.max()
+
+                    # Determine if lower is better
+                    reverse = col in reverse_cols
+
+                    # Calculate normalized value
+                    if min_val == max_val:
+                        emoji = "🟡"
+                    else:
+                        normalized = (value - min_val) / (max_val - min_val)
+                        if reverse:
+                            normalized = 1 - normalized
+
+                        # Assign emoji based on value
+                        if normalized >= 0.66:
+                            emoji = "🟢"
+                        elif normalized >= 0.33:
+                            emoji = "🟡"
+                        else:
+                            emoji = "🔴"
+
+                    # Format value
+                    if isinstance(value, (int, float)):
+                        formatted = f"{emoji} {value:.4f}"
+                    else:
+                        formatted = f"{emoji} {value}"
+
+                    row_data.append(formatted)
+
+            f.write("| " + " | ".join(row_data) + " |\n")
+
+        f.write("\n## Metrics Explanation\n\n")
+        f.write("- **filesize_ratio**: Compressed size / raw size (lower is better)\n")
+        f.write("- **compression_time_sec**: Time to compress all images (lower is better)\n")
+        f.write("- **decompression_time_sec**: Time to decompress all images (lower is better)\n")
+        f.write("- **psnr_mean**: Peak Signal-to-Noise Ratio in dB (higher is better, 30+ good, 35+ excellent)\n")
+        f.write("- **ssim_mean**: Structural Similarity Index 0-1 (higher is better, 0.9+ good)\n")
+        f.write("- **lpips_mean**: Learned Perceptual similarity (lower is better, <0.1 good)\n")
+
+    print(f"\nColor-coded markdown table saved to {md_path}")
+
     return df_merged
 
 
