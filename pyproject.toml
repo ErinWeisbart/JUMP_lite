@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "duckdb>=1.4.2",
     "imagecodecs>=2025.8.2",
     "jump-portrait>=0.0.29",
     "lpips>=0.1.4",

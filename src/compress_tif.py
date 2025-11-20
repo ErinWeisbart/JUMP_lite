@@ -10,22 +10,22 @@ Things to try:
 
 import lzma
 from itertools import groupby
-from joblib import Parallel, delayed
 from pathlib import Path
 from pprint import pprint
 from shutil import rmtree
 
 from skimage.metrics import structural_similarity as ssim
 from time import perf_counter
-from tqdm import tqdm
+
 import numpy
 import zarr
-
-
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
 try:
-    from imagecodecs.numcodecs import Brotli, Jpegxl
     import numcodecs
+    from imagecodecs.numcodecs import Brotli, Jpegxl
+
     # Register the codecs manually
     numcodecs.register_codec(Brotli)
     numcodecs.register_codec(Jpegxl)
@@ -99,7 +99,6 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     return {name: perf_counter() - t_start}
 
 
-
 input_dir = Path("/work/datasets/jump_toy/raw")
 output_dir = input_dir.parent
 
@@ -158,12 +157,12 @@ if IMAGECODECS_AVAILABLE:
 key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
 
 groups = {
-    k: list(g)
+    k: sorted(g)
     for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
 }
 
 # Subsample groups for testing
-# groups = dict(list(groups.items())[:2]) 
+# groups = dict(list(groups.items())[:5]) 
 
 # %% Run compression and record time
 # Use limited parallelism: outer level = codecs (12), inner level = groups (16)
@@ -197,7 +196,10 @@ for name in compressors.keys():
 
 print("Decompression time (milliseconds)")
 pprint(
-    {k: round(v * 1000, 1) for k, v in sorted(decompression_time.items(), key=lambda x: x[1])},
+    {
+        k: round(v * 1000, 1)
+        for k, v in sorted(decompression_time.items(), key=lambda x: x[1])
+    },
     sort_dicts=False,
 )
 
@@ -256,94 +258,4 @@ Filesize (fraction of raw)
  'raw': 1.0}
 """
 
-# %% Save compression metrics to CSV and JSON for easy merging with quality metrics
-import pandas as pd
-import json
 
-# Create results directory
-results_dir = output_dir / "results"
-results_dir.mkdir(parents=True, exist_ok=True)
-
-# Prepare compression metrics data
-raw_size = filesize.get("raw", 0)
-compression_metrics = []
-
-for codec_name in compressors.keys():
-    codec_filesize = filesize.get(f"{codec_name}.zarr", 0)
-    compression_metrics.append({
-        'codec': codec_name,
-        'compression_time_sec': compression_time.get(codec_name, 0),
-        'decompression_time_sec': decompression_time.get(codec_name, 0),
-        'filesize_bytes': codec_filesize,
-        'filesize_ratio': codec_filesize / raw_size if raw_size > 0 else 0,
-        'compression_ratio': raw_size / codec_filesize if codec_filesize > 0 else 0,
-    })
-
-# Convert to DataFrame
-df_compression = pd.DataFrame(compression_metrics)
-
-# Sort by compression ratio (best first)
-df_compression = df_compression.sort_values('filesize_ratio')
-
-# Save to CSV
-csv_path = results_dir / "compression_metrics.csv"
-df_compression.to_csv(csv_path, index=False)
-print(f"\nCompression metrics saved to {csv_path}")
-
-# Save to JSON
-json_path = results_dir / "compression_metrics.json"
-df_compression.to_json(json_path, orient='records', indent=2)
-print(f"Compression metrics saved to {json_path}")
-
-# Print summary table
-print("\nCompression Metrics Summary:")
-print(df_compression.to_string(index=False))
-
-
-# compare compression quality
-
-# build raw array datastore
-original_data = {}
-for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
-    
-    site_name = "__".join(key)
-    nchannels = len(items)
-    example_arr = numpy.array(Image.open(items[0]))
-    shape = example_arr.shape
-    dtype = example_arr.dtype
-
-    tmp_arr = numpy.zeros((nchannels, *shape))
-    for i, img_path in enumerate(items):
-        tmp_arr[i] = numpy.array(Image.open(img_path))
-    
-    original_data[site_name] = tmp_arr
-
-#import pdb; pdb.set_trace()
-
-
-# Compute SSIM for each compression and visualize it
-
-for key in original_data.keys():
-    org_arr = original_data[key]
-
-    import matplotlib.pyplot as plt
-
-    fig, axes = plt.subplots(nrows=len(compressors), ncols=3, figsize=(18, 6))
-
-    for i, name in enumerate(compressors.keys()):
-        store_name = Path(output_dir) / f"{name}.zarr"
-        com_arr = zarr.open(store_name, mode='r')[key][:]
-
-        ssim_index = ssim(org_arr, com_arr, data_range=com_arr.max() - com_arr.min(), multichannel=True, channel_axis=0)
-        print(f"Compression: {name}, Site: {key}, SSIM: {ssim_index}")
-
-        # Make a visual comparison, show each channel side by side
-        axes[i,0].imshow(org_arr[0,:,:], cmap='gray')
-        axes[i,0].set_title(f"Original - Site: {key}")
-        axes[i,1].imshow(com_arr[0,:,:], cmap='gray')
-        axes[i,1].set_title(f"Name: {name}, SSIM: {ssim_index:.4f}  ")
-        axes[i,2].imshow(org_arr[0,:,:] - com_arr[0,:,:], cmap='gray')
-        axes[i,2].set_title(f"Difference ")
-    plt.tight_layout()
-    plt.savefig(f"comparison_{name}_{key}.png", dpi=300)
-    break
