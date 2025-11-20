@@ -131,7 +131,7 @@ if IMAGECODECS_AVAILABLE:
 key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
 
 groups = {
-    k: list(g)
+    k: sorted(g)
     for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
 }
 
