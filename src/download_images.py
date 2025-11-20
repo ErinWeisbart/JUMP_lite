@@ -2,12 +2,31 @@ from functools import partial
 from pathlib import Path
 from time import perf_counter
 
+import duckdb
 import polars as pl
+from broad_babel.data import get_table
 from joblib import Parallel, delayed
 from jump_portrait.fetch import get_item_location_metadata, get_jump_image_batch
 from PIL import Image
 from pooch import retrieve
 from tqdm import tqdm
+
+
+def get_whole_plate_location_info(
+    plate: str = "BR00121438",
+) -> pl.DataFrame:
+    """ """
+    # Get plates
+    meta_wells = get_table("well")
+    meta_plate = get_table("plate")
+    con = duckdb.connect()
+    plate_info = con.sql(f"SELECT * FROM meta_plate WHERE Metadata_Plate='{plate}'")
+    wells_in_plate = con.sql(f"SELECT *FROM meta_wells WHERE Metadata_Plate='{plate}'")
+    whole_plate_metadata = con.sql(
+        "SELECT Metadata_Source,Metadata_Batch,Metadata_Plate,Metadata_Well,Metadata_JCP2022 FROM wells_in_plate NATURAL JOIN plate_info"
+    ).pl()
+    con.close()
+    return whole_plate_metadata
 
 
 def get_metadata_batch(
@@ -94,7 +113,11 @@ if not (meta_file).exists():
     # Compounds too
     print("Downloading compound metadata")
     t_start = perf_counter()
-    compound_rows = get_metadata_batch(compound_selection)
+    compound_selection = get_metadata_batch(compound_selection)
+
+    # Add whole plates if necessary
+    whole_plate = get_whole_plate_location_info("BR00121438")
+    compound_rows = pl.concat((whole_plate, compound_selection)).unique()
     print(
         f"Done downloading compound metadata in {int(perf_counter() - t_start)} seconds"
     )
@@ -106,7 +129,6 @@ if not (meta_file).exists():
 
 else:
     metadata_all = pl.read_parquet(meta_file)
-    all_rows = metadata_all.partition_by("Metadata_JCP2022")
 
 
 # %%
@@ -131,13 +153,13 @@ def download_and_save_image(meta: pl.DataFrame, channel, site, correction):
 
 
 fh = open(progress_file, "w")
-results = Parallel(n_jobs=45)(
+results = Parallel(n_jobs=3)(
     delayed(
         partial(
             download_and_save_image, channel=channels, site=sites, correction=correction
         )
     )(x)
-    for x in tqdm(all_rows, total=len(all_rows), file=fh)
+    for x in tqdm(all_rows[:3], total=len(all_rows), file=fh)
 )
 fh.close()
 progress_file.unlink()
