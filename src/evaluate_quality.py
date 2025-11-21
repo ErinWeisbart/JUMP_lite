@@ -463,9 +463,11 @@ def main():
     )
 
     args = parser.parse_args()
-
+    
     # Use the same paths as compress_tif.py
-    input_dir = Path("/work/datasets/jump_toy/raw")
+    #input_dir = Path("/work/datasets/jump_toy_compress/raw")
+    input_dir = Path("/work/datasets/jump_target2_subset_BR00121438/raw")
+    
     output_dir = input_dir.parent
     results_dir = output_dir / "results"
 
