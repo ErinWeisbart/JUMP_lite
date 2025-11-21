@@ -979,7 +979,7 @@ name = "importlib-metadata"
 version = "8.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/76/66/650a33bd90f786193e4de4b3ad86ea60b53c89b669a5c7be931fac31cdb0/importlib_metadata-8.7.0.tar.gz", hash = "sha256:d13b81ad223b890aa16c5471f2ac3056cf76c5f10f82d6f9292f0b415f389000", size = 56641, upload-time = "2025-04-27T15:29:01.736Z" }
 wheels = [
@@ -1178,6 +1178,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aliby" },
+    { name = "cellpose" },
     { name = "duckdb" },
     { name = "imagecodecs" },
     { name = "jump-portrait" },
@@ -1193,6 +1194,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aliby", directory = "../aliby" },
+    { name = "cellpose", specifier = ">=4.0.7" },
     { name = "duckdb", specifier = ">=1.4.2" },
     { name = "imagecodecs", specifier = ">=2025.8.2" },
     { name = "jump-portrait", specifier = ">=0.0.29" },
