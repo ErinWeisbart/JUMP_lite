@@ -57,7 +57,6 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False):
     zarr_format = 3
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
-
     for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name):
         site_name = "__".join(key)
         nchannels = len(items)
@@ -133,7 +132,7 @@ if IMAGECODECS_AVAILABLE:
 key_fn = lambda x: (*(x.name.split("__"))[:4], (x.name.split("__"))[5])
 
 groups = {
-    k: list(g)
+    k: sorted(g)
     for k, g in groupby(sorted(input_dir.glob("*.tif"), key=key_fn), key=key_fn)
 }
 
