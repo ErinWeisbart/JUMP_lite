@@ -3,8 +3,10 @@ name = "jump-core"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = "<3.13, >3.11"
 dependencies = [
+    "aliby",
+    "cellpose>=4.0.7",
     "duckdb>=1.4.2",
     "imagecodecs>=2025.8.2",
     "jump-portrait>=0.0.29",
@@ -28,5 +30,8 @@ dependencies = [
 dev = [
     "jupyter>=1.1.1",
 ]
+
+[tool.uv.sources]
+aliby = { path = "../aliby" }
 
 
