@@ -70,7 +70,7 @@
               '';
               shellHook = ''
                 export UV_PYTHON=${pkgs.python312}
-                export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
+                export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:"/run/opengl-driver/lib":$LD_LIBRARY_PATH
                 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
                 uv sync --all-groups
