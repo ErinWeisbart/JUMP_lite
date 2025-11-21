@@ -90,16 +90,18 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
 
+    subset = list(groups.items())#[:5]
+
     # Compress groups in parallel with limited parallelism to avoid thrashing
     Parallel(n_jobs=n_jobs_inner, prefer="threads")(
         delayed(compress_single_group)(key, items, store_name, compressor, zarr_format)
-        for key, items in tqdm(groups.items(), total=len(groups.keys()), desc=name, leave=False)
+        for key, items in tqdm(subset, total=len(subset), desc=name, leave=False)
     )
 
     return {name: perf_counter() - t_start}
 
 
-input_dir = Path("/work/datasets/jump_toy/raw")
+input_dir = Path("/work/datasets/jump_target2_subset_BR00121438/raw")
 output_dir = input_dir.parent
 
 print("Input dir:", input_dir)
@@ -115,9 +117,9 @@ filters = [
 ]
 compressing_algs = {
     # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
-    "lz4hc": {"clevel": 9},
+    # "lz4hc": {"clevel": 9},
     "zstd": {"clevel": 9},
-    "zlib": {"clevel": 9},
+    # "zlib": {"clevel": 9},
 }
 compressors_blosc = {
     k: BloscCodec(cname=k, shuffle="bitshuffle", **v)
@@ -132,18 +134,18 @@ compressors = {
 if IMAGECODECS_AVAILABLE:
     compressors.update({
         # "brotli": Brotli(level=11),
-        "jpegxl_lossless": Jpegxl(lossless=True, level=9),
+        # "jpegxl_lossless": Jpegxl(lossless=True, level=9),
         "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
-        "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
+        # "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
         "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
-        "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
+        # "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
         "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
-        "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
+        # "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
         "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
-        "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
-        "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
-        "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
-        "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
+        # "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
+        # "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
+        # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
+        # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
     })
 # for v in {
 #     "preset": {"preset": 9},
@@ -170,15 +172,15 @@ groups = {
 n_jobs_codecs = 32  # Number of codecs to compress in parallel
 n_jobs_groups = 16  # Number of groups to compress in parallel within each codec
 
-compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
-    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
-    for name, compressor in compressors.items()
-)
-compression_time = {k: v for d in compression_time for k, v in d.items()}
+# compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
+#     delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
+#     for name, compressor in compressors.items()
+# )
+# compression_time = {k: v for d in list(compression_time) for k, v in d.items()}
 
 # %%
 decompression_time = {}
-for name in compressors.keys():
+for name in tqdm(compressors.keys(), desc="Decompression"):
     # numcodecs.register_codec(compressor)
     store_name = Path(output_dir) / f"{name}.zarr"
 
