@@ -43,7 +43,7 @@
             let
               # These packages get built by Nix, and will be ahead on the PATH
               pwp = (
-                python3.withPackages (
+                python312.withPackages (
                   p: with p; [
                     venvShellHook
                   ]
@@ -69,7 +69,7 @@
                 unset SOURCE_DATE_EPOCH
               '';
               shellHook = ''
-                export UV_PYTHON=${pkgs.python3}
+                export UV_PYTHON=${pkgs.python312}
                 export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:$LD_LIBRARY_PATH
                 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
