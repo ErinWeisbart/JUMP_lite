@@ -11,7 +11,7 @@ dependencies = [
     "imagecodecs>=2025.8.2",
     "jump-portrait>=0.0.29",
     "pooch>=1.8.2",
-    "scikit-image>=0.25.2",
+    "scikit-image>=0.17.2",
     "zarr>=3.1.3",
 ]
 
@@ -21,6 +21,6 @@ dev = [
 ]
 
 [tool.uv.sources]
-aliby = { path = "../aliby" }
+aliby = { path = "../aliby" , editable=true}
 
 
