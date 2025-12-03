@@ -67,8 +67,6 @@
               ]
               ++ libList;
               shellHook = ''
-
-                export UV_PYTHON=${pkgs.python312}
                 export LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH:"/run/opengl-driver/lib":$LD_LIBRARY_PATH
 
                 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
@@ -85,7 +83,7 @@
 
                 # Create and activate venv
                 if [ ! -d .venv ]; then
-                  uv venv
+                  ${pkgs.python312}/bin/python3.12 -m venv .venv
                 fi
                 source .venv/bin/activate
 
@@ -96,7 +94,7 @@
                 uv pip install torch torchvision torchmetrics --index-url https://download.pytorch.org/whl/cu121
 
                 # Add PyTorch lib path
-                export LD_LIBRARY_PATH=.venv/lib/python3.13/site-packages/torch/lib:$LD_LIBRARY_PATH
+                export LD_LIBRARY_PATH=.venv/lib/python3.12/site-packages/torch/lib:$LD_LIBRARY_PATH
               '';
             };
         };

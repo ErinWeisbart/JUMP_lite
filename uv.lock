@@ -151,7 +151,6 @@ name = "aliby"
 version = "0.2.0"
 source = { directory = "../aliby" }
 dependencies = [
-    { name = "cellpose" },
     { name = "centrosome" },
     { name = "cp-measure" },
     { name = "dask" },
@@ -169,13 +168,12 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cellpose", specifier = ">=3.1.1.1" },
     { name = "cellpose", marker = "extra == 'cellpose'", specifier = ">=3.1.1.1" },
     { name = "centrosome", specifier = ">=1.3.1" },
     { name = "cp-measure", specifier = ">=0.1.7,<0.2" },
     { name = "dask", specifier = ">=2021.12.0" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "nahual", specifier = ">=0.0.6" },
+    { name = "nahual", editable = "../nahual" },
     { name = "numpy", specifier = ">=1.18" },
     { name = "pandas", specifier = ">=2.3.2" },
     { name = "pooch", specifier = ">=1.8.2,<2" },
@@ -188,6 +186,7 @@ requires-dist = [
 provides-extras = ["cellpose"]
 
 [package.metadata.requires-dev]
+cellpose = [{ name = "cellpose", specifier = ">=3.1.1.1" }]
 dev = [
     { name = "jupyter", specifier = ">=1.0.0,<2" },
     { name = "jupytext", specifier = ">=1.15.2,<2" },
@@ -195,7 +194,6 @@ dev = [
     { name = "ruff-lsp", specifier = ">=0.0.52" },
 ]
 examples = [{ name = "pooch", specifier = ">=1.8.2" }]
-test = [{ name = "pytest", specifier = ">=8.4.2" }]
 
 [[package]]
 name = "anyio"
@@ -1182,7 +1180,19 @@ dependencies = [
     { name = "duckdb" },
     { name = "imagecodecs" },
     { name = "jump-portrait" },
+    { name = "lpips" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "polars" },
     { name = "pooch" },
+    { name = "rich" },
+    { name = "scikit-image" },
+    { name = "torch" },
+    { name = "torchmetrics" },
+    { name = "torchvision" },
+    { name = "tqdm" },
     { name = "zarr" },
 ]
 
@@ -1198,7 +1208,19 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.4.2" },
     { name = "imagecodecs", specifier = ">=2025.8.2" },
     { name = "jump-portrait", specifier = ">=0.0.29" },
+    { name = "lpips", specifier = ">=0.1.4" },
+    { name = "matplotlib", specifier = ">=3.0.0" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pillow", specifier = ">=9.0.0" },
+    { name = "polars", specifier = ">=0.19.0" },
     { name = "pooch", specifier = ">=1.8.2" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "scikit-image", specifier = ">=0.20.0,<=0.24" },
+    { name = "torch", specifier = ">=2.0.0" },
+    { name = "torchmetrics", specifier = ">=1.0.0" },
+    { name = "torchvision", specifier = ">=0.15.0" },
+    { name = "tqdm", specifier = ">=4.0.0" },
     { name = "zarr", specifier = ">=3.1.3" },
 ]
 
@@ -1487,6 +1509,20 @@ wheels = [
 ]
 
 [[package]]
+name = "lightning-utilities"
+version = "0.15.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "setuptools" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b8/39/6fc58ca81492db047149b4b8fd385aa1bfb8c28cd7cacb0c7eb0c44d842f/lightning_utilities-0.15.2.tar.gz", hash = "sha256:cdf12f530214a63dacefd713f180d1ecf5d165338101617b4742e8f22c032e24", size = 31090, upload-time = "2025-08-06T13:57:39.242Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/73/3d757cb3fc16f0f9794dd289bcd0c4a031d9cf54d8137d6b984b2d02edf3/lightning_utilities-0.15.2-py3-none-any.whl", hash = "sha256:ad3ab1703775044bbf880dbf7ddaaac899396c96315f3aa1779cec9d618a9841", size = 29431, upload-time = "2025-08-06T13:57:38.046Z" },
+]
+
+[[package]]
 name = "locket"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1509,6 +1545,22 @@ wheels = [
 ]
 
 [[package]]
+name = "lpips"
+version = "0.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e8/2d/4b8148d32f5bd461eb7d5daa54fcc998f86eaa709a57f4ef6aa4c62f024f/lpips-0.1.4.tar.gz", hash = "sha256:3846331df6c69688aec3d300a5eeef6c529435bc8460bd58201c3d62e56188fa", size = 18029, upload-time = "2021-08-25T22:10:32.803Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/13/1df50c7925d9d2746702719f40e864f51ed66f307b20ad32392f1ad2bb87/lpips-0.1.4-py3-none-any.whl", hash = "sha256:fd537af5828b69d2e6ffc0a397bd506dbc28ca183543617690844c08e102ec5e", size = 53763, upload-time = "2021-08-25T22:10:31.257Z" },
+]
+
+[[package]]
 name = "mahotas"
 version = "1.4.18"
 source = { registry = "https://pypi.org/simple" }
@@ -1527,6 +1579,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/04/ebfd6f54a5919a4f344e498a541c26ca1dbf5e7628f464cbf35ea580308a/mahotas-1.4.18-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:17b6a5420fd71227cd3e875e42a01818b3d94cacb075f93afed36fab63390b75", size = 5817840, upload-time = "2024-07-17T21:10:51.901Z" },
     { url = "https://files.pythonhosted.org/packages/7e/7f/1b89107058873a36e0aa0edd03dbbc18c647c3b672f391270d8b7f056f37/mahotas-1.4.18-cp312-cp312-win32.whl", hash = "sha256:839787784f916c4f03a43e92bb22184920213e5ece0fa0c826f5bdf92eaaff4b", size = 1712598, upload-time = "2024-07-17T21:10:54.487Z" },
     { url = "https://files.pythonhosted.org/packages/a7/93/8ab4c4e10235b0acef65561a33b303b66d2d1fd180545872798db05f0e09/mahotas-1.4.18-cp312-cp312-win_amd64.whl", hash = "sha256:579e6f48549b06eb32cfa9501e320194a9d8a97fe35a7832b6b1f3fa104cfb16", size = 1730892, upload-time = "2024-07-17T21:10:56.55Z" },
+]
+
+[[package]]
+name = "markdown-it-py"
+version = "4.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mdurl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5b/f5/4ec618ed16cc4f8fb3b701563655a69816155e79e24a17b651541804721d/markdown_it_py-4.0.0.tar.gz", hash = "sha256:cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3", size = 73070, upload-time = "2025-08-11T12:57:52.854Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/54/e7d793b573f298e1c9013b8c4dade17d481164aa517d1d7148619c2cedbf/markdown_it_py-4.0.0-py3-none-any.whl", hash = "sha256:87327c59b172c5011896038353a81343b6754500a08cd7a4973bb48c6d578147", size = 87321, upload-time = "2025-08-11T12:57:51.923Z" },
 ]
 
 [[package]]
@@ -1608,6 +1672,15 @@ wheels = [
 ]
 
 [[package]]
+name = "mdurl"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
+]
+
+[[package]]
 name = "mistune"
 version = "3.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1672,17 +1745,34 @@ wheels = [
 
 [[package]]
 name = "nahual"
-version = "0.0.6"
-source = { registry = "https://pypi.org/simple" }
+version = "0.0.5"
+source = { editable = "../nahual" }
 dependencies = [
     { name = "loguru" },
     { name = "numpy" },
     { name = "pynng" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/84/1a/60585ae6bf4b91c654afe6cf59860ae8f4f31c62d522f2ca41c8fb1a382d/nahual-0.0.6.tar.gz", hash = "sha256:7b9bfa3756c0a968513e8fa56e0dbedf494e9d0e67e6e57e5b3a590829a51d57", size = 8971, upload-time = "2025-11-20T16:33:43.908Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b2/f4/b631f42359df1d46db1970158c8d1c572d500aa7ed426c15e91f541bf81c/nahual-0.0.6-py3-none-any.whl", hash = "sha256:2b33d20b80536c9b0c971bfc486d5bc0343c54a7502db014d9b1deda3974ec5d", size = 10813, upload-time = "2025-11-20T16:33:43.182Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "loguru", specifier = ">=0.7.3" },
+    { name = "numpy", specifier = ">=1.18.0" },
+    { name = "pynng", specifier = ">=0.8.1" },
+    { name = "requests" },
+]
+
+[package.metadata.requires-dev]
+data = [{ name = "pooch", specifier = ">=1.7.0,<2" }]
+dev = [
+    { name = "jupyter", specifier = ">=1.1.1" },
+    { name = "jupytext", specifier = ">=1.17.2" },
+    { name = "ruff", specifier = ">=0.1.15" },
+    { name = "ruff-lsp", specifier = ">=0.0.62" },
+]
+test = [
+    { name = "imageio", specifier = ">=2.37.0" },
+    { name = "pytest", specifier = ">=8.4.0" },
 ]
 
 [[package]]
@@ -2505,6 +2595,19 @@ wheels = [
 ]
 
 [[package]]
+name = "rich"
+version = "14.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown-it-py" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fb/d2/8920e102050a0de7bfabeb4c4614a49248cf8d5d7a8d01885fbb24dc767a/rich-14.2.0.tar.gz", hash = "sha256:73ff50c7c0c1c77c8243079283f4edb376f0f6442433aecb8ce7e6d0b92d1fe4", size = 219990, upload-time = "2025-10-09T14:16:53.064Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/7a/b0178788f8dc6cafce37a212c99565fa1fe7872c70c6c9c1e1a372d9d88f/rich-14.2.0-py3-none-any.whl", hash = "sha256:76bc51fe2e57d2b1be1f96c524b890b816e334ab4c1e45888799bfaab0021edd", size = 243393, upload-time = "2025-10-09T14:16:51.245Z" },
+]
+
+[[package]]
 name = "roifile"
 version = "2025.5.10"
 source = { registry = "https://pypi.org/simple" }
@@ -2900,6 +3003,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/19/17/e377a460603132b00760511299fceba4102bd95db1a0ee788da21298ccff/torch-2.9.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:27331cd902fb4322252657f3902adf1c4f6acad9dcad81d8df3ae14c7c4f07c4", size = 899742281, upload-time = "2025-11-12T15:22:17.602Z" },
     { url = "https://files.pythonhosted.org/packages/b1/1a/64f5769025db846a82567fa5b7d21dba4558a7234ee631712ee4771c436c/torch-2.9.1-cp312-cp312-win_amd64.whl", hash = "sha256:81a285002d7b8cfd3fdf1b98aa8df138d41f1a8334fd9ea37511517cedf43083", size = 110940568, upload-time = "2025-11-12T15:21:18.689Z" },
     { url = "https://files.pythonhosted.org/packages/6e/ab/07739fd776618e5882661d04c43f5b5586323e2f6a2d7d84aac20d8f20bd/torch-2.9.1-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:c0d25d1d8e531b8343bea0ed811d5d528958f1dcbd37e7245bc686273177ad7e", size = 74479191, upload-time = "2025-11-12T15:21:25.816Z" },
+]
+
+[[package]]
+name = "torchmetrics"
+version = "1.8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lightning-utilities" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/85/2e/48a887a59ecc4a10ce9e8b35b3e3c5cef29d902c4eac143378526e7485cb/torchmetrics-1.8.2.tar.gz", hash = "sha256:cf64a901036bf107f17a524009eea7781c9c5315d130713aeca5747a686fe7a5", size = 580679, upload-time = "2025-09-03T14:00:54.077Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/21/aa0f434434c48490f91b65962b1ce863fdcce63febc166ca9fe9d706c2b6/torchmetrics-1.8.2-py3-none-any.whl", hash = "sha256:08382fd96b923e39e904c4d570f3d49e2cc71ccabd2a94e0f895d1f0dac86242", size = 983161, upload-time = "2025-09-03T14:00:51.921Z" },
 ]
 
 [[package]]
