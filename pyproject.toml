@@ -32,6 +32,6 @@ dev = [
 ]
 
 [tool.uv.sources]
-aliby = { path = "../aliby" }
+aliby = { path = "../aliby" , editable=true}
 
 
