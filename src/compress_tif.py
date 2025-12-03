@@ -101,7 +101,7 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     return {name: perf_counter() - t_start}
 
 
-input_dir = Path("/work/datasets/jump_target2_subset_BR00121438/raw")
+input_dir = Path("/work/datasets/jump_target2_4plate/raw")
 output_dir = input_dir.parent
 
 print("Input dir:", input_dir)
@@ -172,11 +172,11 @@ groups = {
 n_jobs_codecs = 32  # Number of codecs to compress in parallel
 n_jobs_groups = 16  # Number of groups to compress in parallel within each codec
 
-# compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
-#     delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
-#     for name, compressor in compressors.items()
-# )
-# compression_time = {k: v for d in list(compression_time) for k, v in d.items()}
+compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
+    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
+    for name, compressor in compressors.items()
+)
+compression_time = {k: v for d in list(compression_time) for k, v in d.items()}
 
 # %%
 decompression_time = {}

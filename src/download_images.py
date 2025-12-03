@@ -116,20 +116,22 @@ if not (meta_file).exists():
     compound_selection = get_metadata_batch(compound_selection)
 
     # Add whole plates if necessary
-    whole_plate = get_whole_plate_location_info("BR00121438")
+    whole_plate = get_whole_plate_location_info("110000293081")
     compound_rows = pl.concat((whole_plate, compound_selection)).unique()
     print(
         f"Done downloading compound metadata in {int(perf_counter() - t_start)} seconds"
     )
-    all_rows = (*gene_rows, *compound_rows)
+    all_rows_data = (*gene_rows, *compound_rows)
 
-    metadata_all = pl.concat(all_rows)
+    metadata_all = pl.concat(all_rows_data)
     metadata_all.write_parquet(meta_file)
     print("Parquet saved. Will download images now.")
 
 else:
     metadata_all = pl.read_parquet(meta_file)
 
+# Convert metadata to list of single-row DataFrames for parallel processing
+all_rows = [metadata_all.slice(i, 1) for i in range(len(metadata_all))]
 
 # %%
 def save_array(image, address: tuple[str]):
@@ -163,3 +165,4 @@ results = Parallel(n_jobs=3)(
 )
 fh.close()
 progress_file.unlink()
+
