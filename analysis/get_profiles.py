@@ -31,7 +31,8 @@ def _create_extract_multich_tree(channels: list[int]) -> dict:
     }
 
 
-dataset = "jump_target2_subset_BR00121438"
+# dataset = "jump_target2_subset_BR00121438"
+dataset = "jump_target2_4plate"
 datasets_path = Path(f"/work/datasets/{dataset}")
 compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 
@@ -160,7 +161,7 @@ for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets
         shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
     if True:
-        result = Parallel(22)(delayed(process_input_path)(x) for x in input_paths)
+        result = Parallel(23)(delayed(process_input_path)(x) for x in input_paths)
     else:
         from tqdm import tqdm
 
