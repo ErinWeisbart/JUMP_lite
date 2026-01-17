@@ -35,6 +35,7 @@ def _create_extract_multich_tree(channels: list[int]) -> dict:
 dataset = "jump_target2_4plate"
 datasets_path = Path(f"/work/datasets/{dataset}")
 compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
+addresses = [f"ipc:///tmp/cellpose{i}.ipc" for i in range(6)]
 
 
 def process_input_path(input_path: str):
@@ -48,10 +49,19 @@ def process_input_path(input_path: str):
     fl_channels = range(5)
 
     segmentation_channel: dict[str, int] = fluo_base_config["segmentation_channel"]
+    random_hash = hash(str(input_path))
+    for i, ch in enumerate(segmentation_channel):
+        # segment_kwargs = pipeline["steps"][f"segment_{ch}"]["segmenter_kwargs"]
+        address = addresses[random_hash % 6]
+        device_id = addresses[random_hash % 2]
+    logger.debug(f"{device_id=} {address=}")
+
     seg_params = {
         f"segment_{obj}": dict(
             segmenter_kwargs=dict(
-                kind="cellpose",
+                kind="nahual_cellpose",
+                address=address,
+                setup_params=dict(device=device_id),
             ),
             img_channel=ch_id,
         )
