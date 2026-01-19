@@ -1,6 +1,7 @@
 #!/usr/bin/env jupyter
 """Test a basic pipeline with a unique zarr directory as input."""
 
+import os
 import shutil
 from functools import partial
 from itertools import combinations, product
@@ -22,12 +23,18 @@ numcodecs.register_codec(Jpegxl)
 def _create_extract_multich_tree(channels: list[int]) -> dict:
     """Generate the extract_multich_tree dictionary for colocalization."""
     return {
-        pair: {
-            "None": {
-                "max": ["pearson", "costes", "manders_fold", "rwc"],
-            },
-        }
-        for pair in combinations(channels, r=2)
+        "tree": {
+            pair: {
+                "None": {
+                    "max": ["pearson", "costes", "manders_fold", "rwc"],
+                },
+            }
+            for pair in combinations(channels, r=2)
+        },
+        "kwargs": {
+            # "ncores": None,  # os.cpu_count(),
+            "ncores": os.cpu_count(),
+        },
     }
 
 
@@ -44,9 +51,12 @@ def process_input_path(input_path: str):
         "capture_order": "CYX",
         "ntps": 1,
         "segmentation_channel": {"nuclei": 1, "cell": 2},
-        # "gstep_params": {},
     }
     fl_channels = range(5)
+
+    hashed_input = hash(str(input_path))
+    address_id = (hashed_input % 8) + 1
+    device_id = hashed_input % 2
 
     segmentation_channel: dict[str, int] = fluo_base_config["segmentation_channel"]
     random_hash = hash(str(input_path))
@@ -89,6 +99,10 @@ def process_input_path(input_path: str):
                 for i in fl_channels
             },
         },
+        kwargs=dict(
+            # ncores=None,  # os.cpu_count(),
+            ncores=os.cpu_count(),
+        ),
     )
 
     ext_params = {
@@ -144,6 +158,7 @@ def process_input_path(input_path: str):
         "save_interval": 1,
     }
 
+    # try:
     result, _ = run_pipeline_and_post(
         pipeline=base_pipeline,
         img_source=input_path,
@@ -151,10 +166,14 @@ def process_input_path(input_path: str):
         fov=input_path.path,
         overwrite=False,
     )
+    # except Exception as e:
+    #     print(f"Error: {e}")
 
 
 # %%
-dsets = list(map(partial(dispatch_dataset, is_monozarr=True), compression_paths))
+dsets = list(
+    map(partial(dispatch_dataset, is_zarr=True, is_monozarr=True), compression_paths)
+)
 
 # %%
 for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets)):
@@ -168,10 +187,11 @@ for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets
 
         logger.remove()
         logger.add(output_path / f"{timestamp}_{dataset}.log")
-        shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        # shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
-    if True:
-        result = Parallel(23)(delayed(process_input_path)(x) for x in input_paths)
+    break
+    if False:
+        result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
     else:
         from tqdm import tqdm
 
