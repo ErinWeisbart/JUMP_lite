@@ -25,15 +25,19 @@ compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 # model_name [tile_size, selected_channels, address]
 model_params = {
     "dinov2": [420, [0, 1, 2]],
-    "vit": [256, [0, 1, 2, 3, 4, 5]],  # openphenom
+    # "vit": [256, [0, 1, 2, 3, 4, 5]],  # openphenom
     # "dinov3": [420, [0, 1, 2]],
     # "subcell": [420, [0, 1, 2]],
     # "deepprofiler": [420, [0, 1, 2]],
     # "scdino": [420, [0, 1, 2]],
 }
 model_params = {
-    model_name: [*v, f"ipc:///tmp/{model_name}.ipc"]
-    for model_name, v in model_params.items()
+    model_name: [
+        *v,
+        i % 4,
+        f"ipc:///tmp/{model_name}.ipc",
+    ]
+    for i, (model_name, v) in enumerate(model_params.items())
 }
 
 
@@ -60,12 +64,13 @@ def process_input_path(
         },
     }
     embed_params = dict(
-        address=f,
+        address=address,
         setup_params=dict(
             repo_or_dir="facebookresearch/dinov2",
             model_name="dinov2_vits14_lc",
+            device=device,
         ),
-        selected_channels=(0, 1, 2),
+        selected_channels=selected_channels,
     )
     base_pipeline = {
         "io": {**fluo_base_config},
@@ -104,27 +109,31 @@ dsets = list(
 )
 
 # %%
-for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets)):
-    input_paths = list(dset.get_position_ids().values())
-    assert len(input_paths), "No files found in input dataset"
+for model_name, v in model_params.items():
+    for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets)):
+        input_paths = list(dset.get_position_ids().values())
+        assert len(input_paths), "No files found in input dataset"
 
-    if __name__ == "__main__":  # Add logging
-        timestamp = strftime("%s%m%d%H%M")
-        output_path = (
-            Path("/work/datasets/aliby_output")
-            / model_name
-            / dataset
-            / compression_dir.name
-        )
+        if __name__ == "__main__":  # Add logging
+            timestamp = strftime("%s%m%d%H%M")
+            output_path = (
+                Path("/work/datasets/aliby_output")
+                / model_name
+                / dataset
+                / compression_dir.name
+            )
 
-        logger.remove()
-        logger.add(output_path / f"{timestamp}_{dataset}.log")
-        # shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+            logger.remove()
+            logger.add(output_path / f"{timestamp}_{dataset}.log")
+            # shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
-        # if False:
-        #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
-        # else:
-        #     from tqdm import tqdm
-        # t0 = perf_counter()
-    result = [process_input_path(input_path) for input_path in input_paths]
-    # print(f"Processing took {perf_counter() - t0} seconds")
+            # if False:
+            #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
+            # else:
+            #     from tqdm import tqdm
+            # t0 = perf_counter()
+        result = [
+            process_input_path(input_path, output_path, *v)
+            for input_path in tqdm(input_paths)
+        ]
+        # print(f"Processing took {perf_counter() - t0} seconds")

@@ -182,7 +182,10 @@ for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets
     if __name__ == "__main__":  # Add logging
         timestamp = strftime("%s%m%d%H%M")
         output_path = (
-            Path("/work/datasets/aliby_output") / dataset / compression_dir.name
+            Path("/work/datasets/aliby_output")
+            / "cp_measure"
+            / dataset
+            / compression_dir.name
         )
 
         logger.remove()
