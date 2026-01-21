@@ -1,7 +1,8 @@
 #!/usr/bin/env jupyter
-"""CLI tool to featurize a dataset using a specific deep learning model deployed via Nahual."""
+"""CLI tool to featurize a dataset using a specific deep learning model deployed via Nahual."""  #
 
 from functools import partial
+from itertools import product
 from pathlib import Path
 from time import perf_counter, strftime
 
@@ -22,33 +23,62 @@ dataset = "jump_target2_4plate"
 datasets_path = Path(f"/work/datasets/{dataset}")
 compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 
-# model_name [tile_size, selected_channels, address]
-model_params = {
-    "dinov2": [420, [0, 1, 2]],
+
+# Parameters shared amongst all models: tile_size and which channels to use (ids)
+# These tell us when to pad or select channels to match the models
+# model_group -> (tile_size, channels)
+model_inputs = dict(
+    dinov2=dict(
+        tile_size=224,
+        selected_channels=[0, 1, 2],
+    ),
     # "vit": [256, [0, 1, 2, 3, 4, 5]],  # openphenom
     # "dinov3": [420, [0, 1, 2]],
-    # "subcell": [420, [0, 1, 2]],
+    subcell=dict(
+        tile_size=256,
+        selected_channels=[0, 1, 2, 3],
+    ),
     # "deepprofiler": [420, [0, 1, 2]],
     # "scdino": [420, [0, 1, 2]],
-}
+)
+
+model_setup_params = dict(
+    dinov2=dict(
+        model_group="dinov2",
+        repo_or_dir="facebookresearch/dinov2",
+        model_name="dinov2_vits14",
+    ),
+    subcell=dict(
+        model_group="subcell",
+        model_type="mae_contrast_supcon_model",
+        model_channels="rybg",
+    ),
+)
 model_params = {
-    model_name: [
-        *v,
-        i % 4,
-        f"ipc:///tmp/{model_name}.ipc",
-    ]
-    for i, (model_name, v) in enumerate(model_params.items())
+    model_group: {
+        **model_inputs[v.pop("model_group")],
+        **{
+            # "setup_params": model_setup_params.get(model_name, {}),
+            "model_group": model_group,
+            "setup_params": v,
+            "address": f"ipc:///tmp/{model_group}.ipc",
+            "device": i % 4,
+        },
+    }
+    for i, (model_group, v) in enumerate(model_setup_params.items())
 }
 
 
+# %%
 def process_input_path(
     input_path: str,
     output_path: str,
-    tile_size: int = 420,
-    selected_channels: tuple[int] = (0, 1, 2),
-    device: int = 0,
-    address: str = "ipc:///tmp/dinov2.ipc",
+    model_name: str,
+    model_params: dict,
+    # address: str,
+    # device: int = 0,
 ):
+    embedding_step_name = f"nahual_embed_{model_name}"
     fluo_base_config = {
         "input_path": input_path,
         "image_kwargs": {
@@ -59,23 +89,20 @@ def process_input_path(
         "ntps": 1,
         "tile": {
             "kind": "crop",
-            "tile_size": 420,
+            "tile_size": model_params["tile_size"],
             "calculate_drift": False,
         },
     }
     embed_params = dict(
-        address=address,
-        setup_params=dict(
-            repo_or_dir="facebookresearch/dinov2",
-            model_name="dinov2_vits14_lc",
-            device=device,
-        ),
-        selected_channels=selected_channels,
+        address=model_params["address"],
+        model_group=model_params["model_group"],
+        selected_channels=model_params["selected_channels"],
+        setup_params=model_params["setup_params"],
     )
     base_pipeline = {
         "io": {**fluo_base_config},
-        "steps": dict(
-            tile=dict(
+        "steps": {
+            "tile": dict(
                 **fluo_base_config["tile"],
                 **dict(
                     image_kwargs=dict(
@@ -84,9 +111,9 @@ def process_input_path(
                     )
                 ),
             ),
-            nahual_embed_dinov2=embed_params,
-        ),
-        "passed_data": dict(nahual_embed_dinov2=[("pixels", "tile", "data")]),
+            embedding_step_name: embed_params,
+        },
+        "passed_data": {embedding_step_name: [("pixels", "tile", "data")]},
         "save": (),
         "save_interval": 1,
     }
@@ -102,38 +129,61 @@ def process_input_path(
     # except Exception as e:
     #     print(f"Error: {e}")
 
+    return len(result)
+
 
 # %%
 dsets = list(
     map(partial(dispatch_dataset, is_zarr=True, is_monozarr=True), compression_paths)
 )
 
+
 # %%
-for model_name, v in model_params.items():
-    for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets)):
-        input_paths = list(dset.get_position_ids().values())
-        assert len(input_paths), "No files found in input dataset"
+# for model_name, v in model_params.items(): for compression_dir, dset in zip(compression_paths, dsets), total=len(dsets):
+def process_with_timestamp(
+    parameters: tuple[tuple[str, tuple[int, tuple[int], int]],],
+    output_basedir: str | Path,
+    dataset_name: str,
+):
+    (dataset, compression_dir), (model_name, model_params) = parameters
+    input_paths = list(dataset.get_position_ids().values())
+    assert len(input_paths), "No files found in input dataset"
+    breakpoint()
+    if __name__ == "__main__":  # Add logging
+        timestamp = strftime("%s%m%d%H%M")
+        output_path = output_basedir / model_name / dataset_name / compression_dir.name
 
-        if __name__ == "__main__":  # Add logging
-            timestamp = strftime("%s%m%d%H%M")
-            output_path = (
-                Path("/work/datasets/aliby_output")
-                / model_name
-                / dataset
-                / compression_dir.name
-            )
+        logger.remove()
+        logger.add(output_path / f"{timestamp}_{dataset}.log")
+        # shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
-            logger.remove()
-            logger.add(output_path / f"{timestamp}_{dataset}.log")
-            # shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        # if False:
+        #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
+        # else:
+        #     from tqdm import tqdm
+        # t0 = perf_counter()
+    print(output_path)
+    result = [
+        process_input_path(input_path, output_path, model_name, model_params)
+        for input_path in tqdm(input_paths)
+    ]
+    # print(f"Processing took {perf_counter() - t0} seconds")
+    return result
 
-            # if False:
-            #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
-            # else:
-            #     from tqdm import tqdm
-            # t0 = perf_counter()
-        result = [
-            process_input_path(input_path, output_path, *v)
-            for input_path in tqdm(input_paths)
-        ]
-        # print(f"Processing took {perf_counter() - t0} seconds")
+
+process_dataset_curried = partial(
+    process_with_timestamp,
+    dataset_name=dataset,
+    output_basedir=Path("/work/datasets/aliby_output/"),
+)
+
+parameters_combinations = list(
+    product(list(zip(dsets, compression_paths)), model_params.items())
+)
+
+# result = Parallel(5)(
+#     delayed(process_dataset_curried)(x) for x in parameters_combinations
+# )
+for paramset in parameters_combinations:
+    result = process_dataset_curried(paramset)
+    # print(result)
