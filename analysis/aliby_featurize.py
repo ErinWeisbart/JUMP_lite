@@ -148,7 +148,6 @@ def process_with_timestamp(
     (dataset, compression_dir), (model_name, model_params) = parameters
     input_paths = list(dataset.get_position_ids().values())
     assert len(input_paths), "No files found in input dataset"
-    breakpoint()
     if __name__ == "__main__":  # Add logging
         timestamp = strftime("%s%m%d%H%M")
         output_path = output_basedir / model_name / dataset_name / compression_dir.name
