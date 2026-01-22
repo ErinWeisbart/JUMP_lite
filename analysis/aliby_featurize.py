@@ -29,10 +29,10 @@ compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 # model_group -> (tile_size, channels)
 model_inputs = dict(
     dinov2=dict(
-        tile_size=224,
+        tile_size=518,
         selected_channels=[0, 1, 2],
     ),
-    # "vit": [256, [0, 1, 2, 3, 4, 5]],  # openphenom
+    vit=dict(tile_size=256, selected_channels=[0, 1, 2, 3, 4]),  # openphenom
     # "dinov3": [420, [0, 1, 2]],
     subcell=dict(
         tile_size=256,
@@ -42,16 +42,21 @@ model_inputs = dict(
     # "scdino": [420, [0, 1, 2]],
 )
 
+# Only models in this dictionary will be used
 model_setup_params = dict(
-    dinov2=dict(
-        model_group="dinov2",
-        repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vits14",
-    ),
-    subcell=dict(
-        model_group="subcell",
-        model_type="mae_contrast_supcon_model",
-        model_channels="rybg",
+    # dinov2=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vitl14",
+    # ),
+    # subcell=dict(
+    #     model_group="subcell",
+    #     model_type="mae_contrast_supcon_model",
+    #     model_channels="rybg",
+    # ),
+    vit=dict(
+        model_group="vit",
+        model_name="recursionpharma/OpenPhenom",
     ),
 )
 model_params = {
@@ -128,8 +133,6 @@ def process_input_path(
     )
     # except Exception as e:
     #     print(f"Error: {e}")
-
-    return len(result)
 
 
 # %%
