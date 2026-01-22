@@ -29,7 +29,7 @@ compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 # model_group -> (tile_size, channels)
 model_inputs = dict(
     dinov2=dict(
-        tile_size=518,
+        tile_size=420,
         selected_channels=[0, 1, 2],
     ),
     vit=dict(tile_size=256, selected_channels=[0, 1, 2, 3, 4]),  # openphenom
@@ -54,23 +54,36 @@ model_setup_params = dict(
     #     model_type="mae_contrast_supcon_model",
     #     model_channels="rybg",
     # ),
-    vit=dict(
-        model_group="vit",
-        model_name="recursionpharma/OpenPhenom",
+    # vit=dict(
+    #     model_group="vit",
+    #     model_name="recursionpharma/OpenPhenom",
+    # ),
+    # dinov2_random=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vitl14",
+    #     pretrained=False,
+    #     device=1,
+    # ),
+    dinov2_490=dict(
+        model_group="dinov2",
+        repo_or_dir="facebookresearch/dinov2",
+        model_name="dinov2_vitl14",
+        pretrained=False,
+        device=3,
     ),
 )
 model_params = {
-    model_group: {
-        **model_inputs[v.pop("model_group")],
+    model_name: {
+        **model_inputs[v["model_group"]],
         **{
             # "setup_params": model_setup_params.get(model_name, {}),
-            "model_group": model_group,
+            "model_group": v.pop("model_group"),
             "setup_params": v,
-            "address": f"ipc:///tmp/{model_group}.ipc",
-            "device": i % 4,
+            "address": f"ipc:///tmp/{model_name}.ipc",
         },
     }
-    for i, (model_group, v) in enumerate(model_setup_params.items())
+    for i, (model_name, v) in enumerate(model_setup_params.items())
 }
 
 
