@@ -1,6 +1,7 @@
 #!/usr/bin/env jupyter
 """CLI tool to featurize a dataset using a specific deep learning model deployed via Nahual."""  #
 
+import shutil
 from functools import partial
 from itertools import product
 from pathlib import Path
@@ -34,7 +35,9 @@ model_groups_inputs = dict(
     ),
     # vit=dict(tile_size=256, selected_channels=[0, 1, 2, 3, 4]),  # openphenom
     vit=dict(
-        tile_size=256, selected_channels=[0, 1, 2, 3, 4], minmax_8bit=True
+        tile_size=256,
+        selected_channels=[0, 1, 2, 3, 4],
+        minmax_8bit=True,
     ),  # openphenom
     subcell=dict(
         tile_size=256,
@@ -170,7 +173,8 @@ def process_with_timestamp(
 
         logger.remove()
         logger.add(output_path / f"{timestamp}_{dataset}.log")
-        # shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        if __file__:
+            shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
         # if False:
         #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
