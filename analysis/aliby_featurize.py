@@ -27,27 +27,35 @@ compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # These tell us when to pad or select channels to match the models
 # model_group -> (tile_size, channels)
-model_inputs = dict(
+model_groups_inputs = dict(
     dinov2=dict(
-        tile_size=420,
+        tile_size=490,
         selected_channels=[0, 1, 2],
     ),
-    vit=dict(tile_size=256, selected_channels=[0, 1, 2, 3, 4]),  # openphenom
-    # "dinov3": [420, [0, 1, 2]],
+    # vit=dict(tile_size=256, selected_channels=[0, 1, 2, 3, 4]),  # openphenom
+    vit=dict(
+        tile_size=256, selected_channels=[0, 1, 2, 3, 4], minmax_8bit=True
+    ),  # openphenom
     subcell=dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3],
     ),
-    # "deepprofiler": [420, [0, 1, 2]],
-    # "scdino": [420, [0, 1, 2]],
 )
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    # dinov2=dict(
+    # dinov2_490=dict(
     #     model_group="dinov2",
     #     repo_or_dir="facebookresearch/dinov2",
     #     model_name="dinov2_vitl14",
+    #     device=0,
+    # ),
+    # dinov2_random=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vitl14",
+    #     pretrained=False,
+    #     device=1,
     # ),
     # subcell=dict(
     #     model_group="subcell",
@@ -58,24 +66,15 @@ model_setup_params = dict(
     #     model_group="vit",
     #     model_name="recursionpharma/OpenPhenom",
     # ),
-    # dinov2_random=dict(
-    #     model_group="dinov2",
-    #     repo_or_dir="facebookresearch/dinov2",
-    #     model_name="dinov2_vitl14",
-    #     pretrained=False,
-    #     device=1,
-    # ),
-    dinov2_490=dict(
-        model_group="dinov2",
-        repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vitl14",
-        pretrained=False,
-        device=3,
+    openphenom_8bit=dict(
+        model_group="vit",
+        model_name="recursionpharma/OpenPhenom",
+        # device=2,
     ),
 )
 model_params = {
     model_name: {
-        **model_inputs[v["model_group"]],
+        **model_groups_inputs[v["model_group"]],
         **{
             # "setup_params": model_setup_params.get(model_name, {}),
             "model_group": v.pop("model_group"),
@@ -109,6 +108,7 @@ def process_input_path(
             "kind": "crop",
             "tile_size": model_params["tile_size"],
             "calculate_drift": False,
+            "minmax_8bit": model_params.get("minmax_8bit", False),
         },
     }
     embed_params = dict(
