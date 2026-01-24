@@ -43,6 +43,11 @@ model_groups_inputs = dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3],
     ),
+    morphem=dict(
+        tile_size=256,
+        selected_channels=[0, 1, 2, 3, 4],
+        # minmax_8bit=True,
+    ),
 )
 
 # Only models in this dictionary will be used
@@ -69,10 +74,14 @@ model_setup_params = dict(
     #     model_group="vit",
     #     model_name="recursionpharma/OpenPhenom",
     # ),
-    openphenom_8bit=dict(
-        model_group="vit",
-        model_name="recursionpharma/OpenPhenom",
-        # device=2,
+    # openphenom_8bit=dict(
+    #     model_group="vit",
+    #     model_name="recursionpharma/OpenPhenom",
+    #     # device=2,
+    # ),
+    morphem=dict(
+        model_group="morphem",
+        model_name="CaicedoLab/MorphEm",
     ),
 )
 model_params = {
@@ -173,8 +182,8 @@ def process_with_timestamp(
 
         logger.remove()
         logger.add(output_path / f"{timestamp}_{dataset}.log")
-        if __file__:
-            shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        # if __file__:
+        #     shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
         # if False:
         #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
