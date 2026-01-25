@@ -1,0 +1,13 @@
+#+OPTIONS: ^:nil
+Tables to export to LaTeX with ease
+
+* Tile size and channels
+| Model           | Tile size | Channels               | Preprocessing          |
+|-----------------+-----------+------------------------+------------------------|
+| cp\_measure     |        NA | Nuclei,AGP,Mito,RNA,ER | minmax, 0-1            |
+| DINOv2          |       490 | Nuclei,AGP,Mito        | standard               |
+| DINOv2 (random) |       490 | Nuclei,AGP,Mito        | standard               |
+| OpenPhenom      |       256 | Nuclei,AGP,Mito,RNA,ER | standard               |
+| SubCell         |       256 | Nuclei,AGP,Mito,RNA    | standard, minmax, 8bit |
+| Morphem         |       256 | Nuclei,AGP,Mito,RNA,ER | standard               |
+
