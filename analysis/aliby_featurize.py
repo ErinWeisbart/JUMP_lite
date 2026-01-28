@@ -4,6 +4,7 @@
 import shutil
 from functools import partial
 from itertools import product
+from multiprocessing import Pool
 from pathlib import Path
 from time import perf_counter, strftime
 
@@ -19,11 +20,10 @@ from tqdm import tqdm
 numcodecs.register_codec(Jpegxl)
 
 # dataset = "jump_target2_subset_BR00121438"
-dataset = "jump_target2_4plate"
-# model_name = "dinov2"  # dinov2 dinov3
+# dataset = "jump_target2_4plate"
+dataset = "jump_core_annotated"
 datasets_path = Path(f"/work/datasets/{dataset}")
 compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
-
 
 # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # These tell us when to pad or select channels to match the models
@@ -33,18 +33,17 @@ model_groups_inputs = dict(
         tile_size=490,
         selected_channels=[0, 1, 2],
     ),
-    # vit=dict(tile_size=256, selected_channels=[0, 1, 2, 3, 4]),  # openphenom
-    vit=dict(
+    openphenom=dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3, 4],
         minmax_8bit=True,
     ),  # openphenom
     subcell=dict(
-        tile_size=256,
+        tile_size=448,
         selected_channels=[0, 1, 2, 3],
     ),
     morphem=dict(
-        tile_size=256,
+        tile_size=224,
         selected_channels=[0, 1, 2, 3, 4],
         # minmax_8bit=True,
     ),
@@ -65,23 +64,25 @@ model_setup_params = dict(
     #     pretrained=False,
     #     device=1,
     # ),
-    # subcell=dict(
-    #     model_group="subcell",
-    #     model_type="mae_contrast_supcon_model",
-    #     model_channels="rybg",
-    # ),
+    subcell=dict(
+        model_group="subcell",
+        model_type="mae_contrast_supcon_model",
+        model_channels="rybg",
+        # device=0,
+    ),
     # vit=dict(
     #     model_group="vit",
     #     model_name="recursionpharma/OpenPhenom",
     # ),
-    # openphenom_8bit=dict(
-    #     model_group="vit",
-    #     model_name="recursionpharma/OpenPhenom",
-    #     # device=2,
-    # ),
+    openphenom=dict(
+        model_group="openphenom",
+        model_name="recursionpharma/OpenPhenom",
+        device=-1,
+    ),
     morphem=dict(
         model_group="morphem",
         model_name="CaicedoLab/MorphEm",
+        device=-1,
     ),
 )
 model_params = {
@@ -91,29 +92,43 @@ model_params = {
             # "setup_params": model_setup_params.get(model_name, {}),
             "model_group": v.pop("model_group"),
             "setup_params": v,
-            "address": f"ipc:///tmp/{model_name}.ipc",
+            "address": f"ipc:///tmp/{model_name}{{}}.ipc",
         },
     }
     for i, (model_name, v) in enumerate(model_setup_params.items())
 }
+n_devices = 4
+n_addresses = 24
 
 
 # %%
 def process_input_path(
-    input_path: str,
+    input_path: dict[str, str],  # "store_path"->store_path,"key"->group_key
     output_path: str,
     model_name: str,
     model_params: dict,
     # address: str,
     # device: int = 0,
 ):
+    ipc_addr = model_params["address"]
+    setup_params = model_params["setup_params"]
+    if "{}" in ipc_addr:
+        hashed_input = hash(str(input_path))
+        hashed_input_int = int(hashed_input)
+        address_id = hashed_input_int % n_addresses
+        ipc_addr = ipc_addr.format(f"_{address_id}")
+
+        print(f"Formatted ipc address into {ipc_addr}")
+        if setup_params.get("device") == -1:  # TODO formalise this
+            device_id = address_id % n_devices
+            setup_params["device"] = device_id
+            print(f"Selected device {device_id}")
+
     embedding_step_name = f"nahual_embed_{model_name}"
     fluo_base_config = {
         "input_path": input_path,
         "image_kwargs": {
             "capture_order": "CYX",
-            # "regex": ".*(r.+c.+)f([0-9][0-9])p01-rgb.tiff",
-            # "input_dimensions": "YXC",
         },
         "ntps": 1,
         "tile": {
@@ -124,10 +139,10 @@ def process_input_path(
         },
     }
     embed_params = dict(
-        address=model_params["address"],
+        address=ipc_addr,
         model_group=model_params["model_group"],
         selected_channels=model_params["selected_channels"],
-        setup_params=model_params["setup_params"],
+        setup_params=setup_params,
     )
     base_pipeline = {
         "io": {**fluo_base_config},
@@ -153,7 +168,7 @@ def process_input_path(
         pipeline=base_pipeline,
         img_source=input_path,
         output_path=output_path,
-        fov=input_path.path,
+        fov=input_path["key"],
         overwrite=False,
     )
     # except Exception as e:
@@ -164,6 +179,11 @@ def process_input_path(
 dsets = list(
     map(partial(dispatch_dataset, is_zarr=True, is_monozarr=True), compression_paths)
 )
+input_paths = []
+print("Loading input paths as Image/Zarr objects")
+for dset in dsets:
+    # MonozarZarr dataset returns a dictionary with store->str, inputs_list -> list[str]
+    input_paths.append(dset.get_position_ids())
 
 
 # %%
@@ -173,15 +193,15 @@ def process_with_timestamp(
     output_basedir: str | Path,
     dataset_name: str,
 ):
-    (dataset, compression_dir), (model_name, model_params) = parameters
-    input_paths = list(dataset.get_position_ids().values())
+    (input_paths, compression_dir), (model_name, model_params) = parameters
+    # input_paths = list(dataset.get_position_ids().values())
     assert len(input_paths), "No files found in input dataset"
     if __name__ == "__main__":  # Add logging
         timestamp = strftime("%s%m%d%H%M")
         output_path = output_basedir / model_name / dataset_name / compression_dir.name
 
         logger.remove()
-        logger.add(output_path / f"{timestamp}_{dataset}.log")
+        logger.add(output_path / f"{timestamp}_{dataset_name}_{model_name}.log")
         # if __file__:
         #     shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
@@ -191,10 +211,18 @@ def process_with_timestamp(
         #     from tqdm import tqdm
         # t0 = perf_counter()
     print(output_path)
-    result = [
-        process_input_path(input_path, output_path, model_name, model_params)
-        for input_path in tqdm(input_paths)
-    ]
+    process_input_path_curried = partial(
+        process_input_path,
+        output_path=output_path,
+        model_name=model_name,
+        model_params=model_params,
+    )
+    with Pool() as p:
+        result = p.map(process_input_path_curried, input_paths.values())
+    # result = [
+    #     process_input_path(input_path_d, output_path, model_name, model_params)
+    #     for group_key, input_path_d in tqdm(input_paths.items())
+    # ]
     # print(f"Processing took {perf_counter() - t0} seconds")
     return result
 
@@ -206,12 +234,11 @@ process_dataset_curried = partial(
 )
 
 parameters_combinations = list(
-    product(list(zip(dsets, compression_paths)), model_params.items())
+    product(list(zip(input_paths, compression_paths)), model_params.items())
 )
 
 # result = Parallel(5)(
 #     delayed(process_dataset_curried)(x) for x in parameters_combinations
 # )
-for paramset in parameters_combinations:
+for paramset in parameters_combinations[-1::]:
     result = process_dataset_curried(paramset)
-    # print(result)
