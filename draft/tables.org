@@ -21,13 +21,14 @@ Note that this only takes the first and last parquet files for each directory. A
 #+end_src
 
 #+RESULTS:
-| *Model*         | *sites/s* | *Hours(total)* |
-| openphenom    | 27.0901 |      7.45167 |
-| subcell       | 29.4397 |      6.85694 |
-| morphem       | 47.8609 |      4.21778 |
-| dinov2_random | 40.1082 |      5.03306 |
+| *Model*         | *sites/min* | *Hours(total)* |
+| openphenom    |   1625.41 |      7.45167 |
+| subcell       |   1766.38 |      6.85694 |
+| morphem       |   2871.65 |      4.21778 |
+| dinov2_random |   2406.49 |      5.03306 |
 
 ** Four plates
+This is a more reliable source of ground truth. Each model was instatiated only once.
 #+begin_src sh :eval no-export :exports results
   ls -lU --time-style=+%s /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles |
     awk -f benchmark_time.awk
