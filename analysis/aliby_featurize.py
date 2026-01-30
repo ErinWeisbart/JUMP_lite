@@ -30,7 +30,7 @@ compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
 # model_group -> (tile_size, channels)
 model_groups_inputs = dict(
     dinov2=dict(
-        tile_size=490,
+        tile_size=224,
         selected_channels=[0, 1, 2],
     ),
     openphenom=dict(
@@ -57,33 +57,29 @@ model_setup_params = dict(
     #     model_name="dinov2_vitl14",
     #     device=0,
     # ),
-    # dinov2_random=dict(
-    #     model_group="dinov2",
-    #     repo_or_dir="facebookresearch/dinov2",
-    #     model_name="dinov2_vitl14",
-    #     pretrained=False,
-    #     device=1,
+    # subcell=dict(
+    #     model_group="subcell",
+    #     model_type="mae_contrast_supcon_model",
+    #     model_channels="rybg",
+    #     device=-1,
     # ),
-    subcell=dict(
-        model_group="subcell",
-        model_type="mae_contrast_supcon_model",
-        model_channels="rybg",
-        # device=0,
+    dinov2_random=dict(
+        model_group="dinov2",
+        repo_or_dir="facebookresearch/dinov2",
+        model_name="dinov2_vits14",
+        pretrained=False,
+        device=-1,
     ),
-    # vit=dict(
-    #     model_group="vit",
+    # openphenom=dict(
+    #     model_group="openphenom",
     #     model_name="recursionpharma/OpenPhenom",
+    #     device=-1,
     # ),
-    openphenom=dict(
-        model_group="openphenom",
-        model_name="recursionpharma/OpenPhenom",
-        device=-1,
-    ),
-    morphem=dict(
-        model_group="morphem",
-        model_name="CaicedoLab/MorphEm",
-        device=-1,
-    ),
+    # morphem=dict(
+    #     model_group="morphem",
+    #     model_name="CaicedoLab/MorphEm",
+    #     device=-1,
+    # ),
 )
 model_params = {
     model_name: {
@@ -98,7 +94,7 @@ model_params = {
     for i, (model_name, v) in enumerate(model_setup_params.items())
 }
 n_devices = 4
-n_addresses = 24
+n_addresses = 40
 
 
 # %%
@@ -120,7 +116,7 @@ def process_input_path(
 
         print(f"Formatted ipc address into {ipc_addr}")
         if setup_params.get("device") == -1:  # TODO formalise this
-            device_id = address_id % n_devices
+            device_id = hashed_input_int % n_devices
             setup_params["device"] = device_id
             print(f"Selected device {device_id}")
 
@@ -240,5 +236,8 @@ parameters_combinations = list(
 # result = Parallel(5)(
 #     delayed(process_dataset_curried)(x) for x in parameters_combinations
 # )
-for paramset in parameters_combinations[-1::]:
+
+for paramset in parameters_combinations:
     result = process_dataset_curried(paramset)
+    # Clean Nahual server instances to make space for new models
+    # subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")

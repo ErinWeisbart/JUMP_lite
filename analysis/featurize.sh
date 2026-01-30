@@ -1,21 +1,31 @@
 # Setup Nahual servers
 
 # ViT-based models
-for i in {0..36}; do
-	for model in morphem openphenom; do
-		session_name="${model}_${i}"
-		ipc_addr="ipc:///tmp/${session_name}.ipc"
-		echo "Starting ${model} instance in screen session '${session_name}'"
-		screen -S "${session_name}" -dm bash -c "nix run github:afermg/nahual_vit#${model} '${ipc_addr}'"
-	done
-done
+# for i in {0..44}; do
+# 	# for model in morphem openphenom; do
+# 	for model in openphenom morphem; do
+# 		session_name="${model}_${i}"
+# 		ipc_addr="ipc:///tmp/${session_name}.ipc"
+# 		echo "Starting ${model} instance in screen session '${session_name}'"
+# 		screen -S "${session_name}" -dm bash -c "nix run github:afermg/nahual_vit#${model} '${ipc_addr}'"
+# 	done
+# done
 
 # Subcell
-for i in {0..9}; do
-	session_name="subcell_${i}"
-	ipc_addr="ipc:///tmp/subcell_${i}.ipc"
-	echo "Starting subcell instance in screen session '${session_name}'"
-	screen -S "${session_name}" -dm bash -c "nix run github:afermg/SubCellPortable '${ipc_addr}'"
+# for i in {0..32}; do
+# 	session_name="subcell_${i}"
+# 	ipc_addr="ipc:///tmp/subcell_${i}.ipc"
+# 	echo "Starting subcell instance in screen session '${session_name}'"
+# 	# Temporary commit, until cache expires
+# 	screen -S "${session_name}" -dm bash -c "nix run github:afermg/SubCellPortable/a5fec99e820d11216e8de305e6e1fc8f7b4e6b16 ${ipc_addr}"
+# done
+
+for i in {0..40}; do
+	session_name="dinov2_${i}"
+	ipc_addr="ipc:///tmp/dinov2_random_${i}.ipc"
+	echo "Starting dinov2 instance in screen session '${session_name}'"
+	# Temporary commit, until cache expires
+	screen -S "${session_name}" -dm bash -c "nix run github:afermg/dinov2 ${ipc_addr}"
 done
 
 echo "All instances started in detached screen sessions."
