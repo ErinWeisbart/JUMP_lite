@@ -4,10 +4,40 @@ Tables to export to LaTeX with ease
 * Tile size and channels
 | Model           | Tile size | Channels               | Preprocessing          |
 |-----------------+-----------+------------------------+------------------------|
-| cp\_measure     |        NA | Nuclei,AGP,Mito,RNA,ER | minmax, 0-1            |
-| DINOv2          |       490 | Nuclei,AGP,Mito        | standard               |
-| DINOv2 (random) |       490 | Nuclei,AGP,Mito        | standard               |
+| DINOv2 (random) |       224 | Nuclei,AGP,Mito        | standard               |
+| cp_measure      |        NA | Nuclei,AGP,Mito,RNA,ER | minmax, 0-1            |
 | OpenPhenom      |       256 | Nuclei,AGP,Mito,RNA,ER | standard               |
-| SubCell         |       256 | Nuclei,AGP,Mito,RNA    | standard, minmax, 8bit |
-| Morphem         |       256 | Nuclei,AGP,Mito,RNA,ER | standard               |
+| SubCell         |       448 | Nuclei,AGP,Mito,RNA    | standard, minmax, 8bit |
+| Morphem         |       224 | Nuclei,AGP,Mito,RNA,ER | standard               |
+# | DINOv2          |       490 | Nuclei,AGP,Mito        | standard               |
+
+
+* Processing times
+Note that this only takes the first and last parquet files for each directory.
+#+begin_src sh :eval noexport :exports results
+  ls -l --time-style=+%s /work/datasets/aliby_output/*/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles/*.parquet |
+    awk '
+    BEGIN {printf "*Model* *Hours*\n"};
+    /^\// {
+      group_starts=NR;
+      if (NR>1) names[s[5]]=max-min;
+      split($0, s, "/")
+    } 
+    {if (NR == group_starts+2) min = max = $6}
+    /parquet/ {
+    if ($6 < min) min = $6;
+    if ($6 > max) max = $6;
+    }
+    END {
+  names[s[5]]=max-min;
+  for (key in names) printf "%s %s\n", key, names[key]/3600}
+    ' 
+#+end_src
+
+#+RESULTS:
+| *Model*         |   *Hours* |
+| openphenom    | 7.45167 |
+| subcell       | 6.85694 |
+| morphem       | 4.21778 |
+| dinov2_random | 5.03306 |
 
