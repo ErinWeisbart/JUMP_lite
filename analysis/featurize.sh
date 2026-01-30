@@ -28,7 +28,7 @@
 # done
 
 # Dinov2
-for i in {0..32}; do
+for i in {0..48}; do
 	session_name="dinov2_${i}"
 	ipc_addr="ipc:///tmp/dinov2_${i}.ipc"
 	echo "Starting dinov2 instance in screen session '${session_name}'"
@@ -37,7 +37,7 @@ for i in {0..32}; do
 done
 
 echo "All instances started in detached screen sessions."
-echo "Use 'screen -ls' to list sessions and 'screen -r \$MODEL_\$InstanceID' to attach one in partiular."
+echo "Use 'screen -ls' to list sessions and 'screen -r \$MODEL_\$InstanceID' to attach one in particular."
 echo "To kill them all, run: screen -ls | awk -F'.' '/\S+_[0-9]/ {print $1}' | xargs kill"
 
 # Run aliby that uses servers for embeddings

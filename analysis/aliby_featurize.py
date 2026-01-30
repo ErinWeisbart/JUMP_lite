@@ -24,6 +24,8 @@ numcodecs.register_codec(Jpegxl)
 dataset = "jump_core_annotated"
 datasets_path = Path(f"/work/datasets/{dataset}")
 compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
+n_devices = 4
+n_addresses = 48
 
 # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # These tell us when to pad or select channels to match the models
@@ -54,7 +56,7 @@ model_setup_params = dict(
     dinov2=dict(
         model_group="dinov2",
         repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vitl14",
+        model_name="dinov2_vits14",
         device=-1,
     ),
     # subcell=dict(
@@ -93,8 +95,6 @@ model_params = {
     }
     for i, (model_name, v) in enumerate(model_setup_params.items())
 }
-n_devices = 4
-n_addresses = 32
 
 
 # %%
