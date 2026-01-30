@@ -3,14 +3,14 @@
 # --
 # Example output:
 # 
-# *Model* *sites/min* *Hours(total)* *#images*
-# openphenom 1458 0.405 9216
-# subcell 2042 0.567222 9216
-# cp_measure 1087210 302.003 9216
-# morphem 2533 0.703611 9216
-# dinov2_random 1943 0.539722 9216
+# *Model* *images/min* *Hours(total)* *#images*
+# openphenom 379.259 0.405 9216
+# subcell 270.793 0.567222 9216
+# cp_measure 0.508605 302.003 9216
+# morphem 218.302 0.703611 9216
+# dinov2_random 284.591 0.539722 9216
 
-BEGIN {printf "*Model* *sites/min* *Hours(total)* *#images*\n"};
+BEGIN {printf "*Model* *images/min* *Hours(total)* *#images*\n"};
 /^\// {
     group_starts=NR;
     {
@@ -28,4 +28,4 @@ BEGIN {printf "*Model* *sites/min* *Hours(total)* *#images*\n"};
     }
     END {
 	names[s[5]]=max-min;
-	for (key in names) printf("%s %s %s %s\n", key, names[key], names[key]/3600, nfiles[key]) }
+	for (key in names) printf("%s %s %s %s\n", key, nfiles[key]/names[key] * 60, names[key]/3600, nfiles[key]) }
