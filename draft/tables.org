@@ -30,14 +30,30 @@ Note that this only takes the first and last parquet files for each directory. A
 ** Four plates
 This is a more reliable source of ground truth. Each model was instatiated only once.
 #+begin_src sh :eval no-export :exports results
-  ls -lU --time-style=+%s /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles |
-    awk -f benchmark_time.awk
+  export LC_COLLATE=C
+  ls -l --time-style=+%s /work/datasets/aliby_output/*/jump_target2_4plate/jpegxl_lossy_effort_3.zarr/profiles |
+    awk -f benchmark_time.awk | sort
 #+end_src
 
 #+RESULTS:
-| *Model*         | *images/min* | *Hours(total)* | *#images* |
-| openphenom    |    379.259 |        0.405 |    9216 |
-| subcell       |    270.793 |     0.567222 |    9216 |
-| cp_measure    |   0.508605 |      302.003 |    9216 |
-| morphem       |    218.302 |     0.703611 |    9216 |
-| dinov2_random |    284.591 |     0.539722 |    9216 |
+| *Model*         | *Images/min* | *Hours(total)* | *#images* |
+| cp_measure    |   0.109853 |      1398.23 |    9216 |
+| dinov2_random |    205.409 |     0.747778 |    9216 |
+| morphem       |    148.805 |      1.03222 |    9216 |
+| openphenom    |    261.323 |     0.587778 |    9216 |
+| subcell       |    65.1999 |      2.35583 |    9216 |
+
+We had to fix the fact that half of cp_measure files were processed days before
+#+begin_src sh :eval no-export :exports results 
+export LC_COLLATE=C
+find /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00" -printf "%p %T@\n" | awk -f benchmark_time_find.awk | sort
+  
+#+end_src
+
+#+RESULTS:
+| *Model*         | *Images/min* | *Hours(total)* | *#images* |
+| cp_measure    |    1.30622 |      53.7429 |    4212 |
+| dinov2_random |    284.631 |     0.539645 |    9216 |
+| morphem       |    218.363 |     0.703416 |    9216 |
+| openphenom    |    379.248 |     0.405012 |    9216 |
+| subcell       |    270.833 |     0.567138 |    9216 |

@@ -51,25 +51,25 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    # dinov2_490=dict(
-    #     model_group="dinov2",
-    #     repo_or_dir="facebookresearch/dinov2",
-    #     model_name="dinov2_vitl14",
-    #     device=0,
-    # ),
+    dinov2=dict(
+        model_group="dinov2",
+        repo_or_dir="facebookresearch/dinov2",
+        model_name="dinov2_vitl14",
+        device=-1,
+    ),
     # subcell=dict(
     #     model_group="subcell",
     #     model_type="mae_contrast_supcon_model",
     #     model_channels="rybg",
     #     device=-1,
     # ),
-    dinov2_random=dict(
-        model_group="dinov2",
-        repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vits14",
-        pretrained=False,
-        device=-1,
-    ),
+    # dinov2_random=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vits14",
+    #     pretrained=False,
+    #     device=-1,
+    # ),
     # openphenom=dict(
     #     model_group="openphenom",
     #     model_name="recursionpharma/OpenPhenom",
@@ -94,7 +94,7 @@ model_params = {
     for i, (model_name, v) in enumerate(model_setup_params.items())
 }
 n_devices = 4
-n_addresses = 40
+n_addresses = 32
 
 
 # %%
