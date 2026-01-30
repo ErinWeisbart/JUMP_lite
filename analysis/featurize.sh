@@ -17,12 +17,20 @@
 # 	ipc_addr="ipc:///tmp/subcell_${i}.ipc"
 # 	echo "Starting subcell instance in screen session '${session_name}'"
 # 	# Temporary commit, until cache expires
-# 	screen -S "${session_name}" -dm bash -c "nix run github:afermg/SubCellPortable/a5fec99e820d11216e8de305e6e1fc8f7b4e6b16 ${ipc_addr}"
+
+# Dinov2 Random
+# for i in {0..40}; do
+# 	session_name="dinov2_${i}"
+# 	ipc_addr="ipc:///tmp/dinov2_random_${i}.ipc"
+# 	echo "Starting dinov2 instance in screen session '${session_name}'"
+# 	# Temporary commit, until cache expires
+# 	screen -S "${session_name}" -dm bash -c "nix run github:afermg/dinov2 ${ipc_addr}"
 # done
 
-for i in {0..40}; do
+# Dinov2
+for i in {0..32}; do
 	session_name="dinov2_${i}"
-	ipc_addr="ipc:///tmp/dinov2_random_${i}.ipc"
+	ipc_addr="ipc:///tmp/dinov2_${i}.ipc"
 	echo "Starting dinov2 instance in screen session '${session_name}'"
 	# Temporary commit, until cache expires
 	screen -S "${session_name}" -dm bash -c "nix run github:afermg/dinov2 ${ipc_addr}"
