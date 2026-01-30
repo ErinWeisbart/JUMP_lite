@@ -17,7 +17,7 @@ Note that this only takes the first and last parquet files for each directory.
 #+begin_src sh :eval noexport :exports results
   ls -l --time-style=+%s /work/datasets/aliby_output/*/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles/*.parquet |
     awk '
-    BEGIN {printf "*Model* *Hours*\n"};
+    BEGIN {printf "*Model* *sites/s* *Hours(total)*\n"};
     /^\// {
       group_starts=NR;
       if (NR>1) names[s[5]]=max-min;
@@ -30,14 +30,14 @@ Note that this only takes the first and last parquet files for each directory.
     }
     END {
   names[s[5]]=max-min;
-  for (key in names) printf "%s %s\n", key, names[key]/3600}
+  for (key in names) printf("%s %s %s\n", key, 726720/names[key], names[key]/3600)}
     ' 
 #+end_src
 
 #+RESULTS:
-| *Model*         |   *Hours* |
-| openphenom    | 7.45167 |
-| subcell       | 6.85694 |
-| morphem       | 4.21778 |
-| dinov2_random | 5.03306 |
+| *Model*         | *sites/s* | *Hours(total)* |
+| openphenom    | 27.0901 |      7.45167 |
+| subcell       | 29.4397 |      6.85694 |
+| morphem       | 47.8609 |      4.21778 |
+| dinov2_random | 40.1082 |      5.03306 |
 
