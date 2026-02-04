@@ -12,24 +12,29 @@ import numcodecs
 from aliby.io.dataset import dispatch_dataset
 from aliby.pipe import run_pipeline_and_post
 from imagecodecs.numcodecs import Jpegxl
-from joblib import Parallel, delayed
 from loguru import logger
-from tqdm import tqdm
+
+# from joblib import Parallel, delayed
 
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
 
-# dataset = "jump_target2_subset_BR00121438"
-# dataset = "jump_target2_4plate"
 dataset = "jump_core_annotated"
-datasets_path = Path(f"/work/datasets/{dataset}")
-compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
+datasets_path = Path(f"/work/datasets/{dataset}/raw")
+# regex = ".*source_4__2021_08_23_Batch12__BR00126717__B11__DNA__2__Orig.tif"
+regex = "(.*)__([A-Z][0-9]{2})__([A-Za-z]+)__([0-9])__Orig.tif"
+capture_order = "PWCF"  # Plate, Well, Channel Foci
+input_dimensions = "YX"
+nchannels = 5
+addresses = [f"ipc:///tmp/cellpose{i}.ipc" for i in range(6)]
+dset = dispatch_dataset(datasets_path, regex=regex, capture_order=capture_order)
+output_basedir = Path("/work/datasets/aliby_output/")
 n_devices = 4
-n_addresses = 48
+n_addresses = 40
 
-# Parameters shared amongst all models: tile_size and which channels to use (ids)
-# These tell us when to pad or select channels to match the models
-# model_group -> (tile_size, channels)
+# # Parameters shared amongst all models: tile_size and which channels to use (ids)
+# # These tell us when to pad or select channels to match the models
+# # model_group -> (tile_size, channels)
 model_groups_inputs = dict(
     dinov2=dict(
         tile_size=224,
@@ -53,12 +58,12 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    dinov2=dict(
-        model_group="dinov2",
-        repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vits14",
-        device=-1,
-    ),
+    # dinov2=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vits14",
+    #     device=-1,
+    # ),
     # subcell=dict(
     #     model_group="subcell",
     #     model_type="mae_contrast_supcon_model",
@@ -72,11 +77,11 @@ model_setup_params = dict(
     #     pretrained=False,
     #     device=-1,
     # ),
-    # openphenom=dict(
-    #     model_group="openphenom",
-    #     model_name="recursionpharma/OpenPhenom",
-    #     device=-1,
-    # ),
+    openphenom=dict(
+        model_group="openphenom",
+        model_name="recursionpharma/OpenPhenom",
+        device=-1,
+    ),
     # morphem=dict(
     #     model_group="morphem",
     #     model_name="CaicedoLab/MorphEm",
@@ -106,15 +111,15 @@ def process_input_path(
     # address: str,
     # device: int = 0,
 ):
-    ipc_addr = model_params["address"]
+    ipc_addr = model_params.get("address")
     setup_params = model_params["setup_params"]
-    if "{}" in ipc_addr:
+    if ipc_addr and "{}" in ipc_addr:
         hashed_input = hash(str(input_path))
         hashed_input_int = int(hashed_input)
         address_id = hashed_input_int % n_addresses
         ipc_addr = ipc_addr.format(f"_{address_id}")
 
-        print(f"Formatted ipc address into {ipc_addr}")
+        # print(f"Formatted ipc address into {ipc_addr}")
         if setup_params.get("device") == -1:  # TODO formalise this
             device_id = hashed_input_int % n_devices
             setup_params["device"] = device_id
@@ -124,7 +129,9 @@ def process_input_path(
     fluo_base_config = {
         "input_path": input_path,
         "image_kwargs": {
-            "capture_order": "CYX",
+            "regex": regex,
+            "capture_order": capture_order,
+            "input_dimensions": input_dimensions,
         },
         "ntps": 1,
         "tile": {
@@ -162,9 +169,9 @@ def process_input_path(
     # try:
     result, _ = run_pipeline_and_post(
         pipeline=base_pipeline,
-        img_source=input_path,
+        img_source=input_path["path"],
         output_path=output_path,
-        fov=input_path["key"],
+        fov="__".join(input_path["key"]),  # This is expected a string
         overwrite=False,
     )
     # except Exception as e:
@@ -172,24 +179,17 @@ def process_input_path(
 
 
 # %%
-dsets = list(
-    map(partial(dispatch_dataset, is_zarr=True, is_monozarr=True), compression_paths)
-)
-input_paths = []
-print("Loading input paths as Image/Zarr objects")
-for dset in dsets:
-    # MonozarZarr dataset returns a dictionary with store->str, inputs_list -> list[str]
-    input_paths.append(dset.get_position_ids())
-
-
-# %%
 # for model_name, v in model_params.items(): for compression_dir, dset in zip(compression_paths, dsets), total=len(dsets):
 def process_with_timestamp(
-    parameters: tuple[tuple[str, tuple[int, tuple[int], int]],],
+    input_paths: dict[tuple[str] | str, str],
+    compression_dir: str,
+    model_params: dict,
+    model_name: str,
     output_basedir: str | Path,
     dataset_name: str,
 ):
-    (input_paths, compression_dir), (model_name, model_params) = parameters
+    # (input_paths, compression_dir), (model_name, model_params) = parameters
+    # input_paths = list(dataset.get_position_ids().values())
     assert len(input_paths), "No files found in input dataset"
     if __name__ == "__main__":  # Add logging
         timestamp = strftime("%s%m%d%H%M")
@@ -200,11 +200,6 @@ def process_with_timestamp(
         # if __file__:
         #     shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
-        # if False:
-        #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
-        # else:
-        #     from tqdm import tqdm
-        # t0 = perf_counter()
     print(output_path)
     process_input_path_curried = partial(
         process_input_path,
@@ -212,12 +207,21 @@ def process_with_timestamp(
         model_name=model_name,
         model_params=model_params,
     )
-    with Pool() as p:
-        result = p.map(process_input_path_curried, input_paths)
-    # result = [
-    #     process_input_path(input_path_d, output_path, model_name, model_params)
-    #     for group_key, input_path_d in tqdm(input_paths.items())
-    # ]
+    if True:
+        with Pool() as p:
+            process_input_path_curried2 = partial(
+                process_input_path_curried,
+                model_name=model_name,
+                output_path=output_path,
+                model_params=model_params,
+            )
+            result = p.map(process_input_path_curried2, input_paths)
+    else:
+        result = []
+        for key_path in input_paths:
+            output = process_input_path(key_path, output_path, model_name, model_params)
+            result.append(output)
+
     # print(f"Processing took {perf_counter() - t0} seconds")
     return result
 
@@ -225,18 +229,22 @@ def process_with_timestamp(
 process_dataset_curried = partial(
     process_with_timestamp,
     dataset_name=dataset,
-    output_basedir=Path("/work/datasets/aliby_output/"),
+    output_basedir=output_basedir,
 )
-
-parameters_combinations = list(
-    product(list(zip(input_paths, compression_paths)), model_params.items())
+input_paths = dset.get_position_ids()
+result = process_with_timestamp(  #
+    input_paths=input_paths,
+    compression_dir=datasets_path,
+    model_params=model_params["openphenom"],
+    model_name="openphenom",
+    dataset_name=dataset,
+    output_basedir=output_basedir,
 )
-
-# result = Parallel(5)(
-#     delayed(process_dataset_curried)(x) for x in parameters_combinations
+# parameters_combinations = list(
+#     product(list(zip(input_paths, compression_paths)), model_params.items())
 # )
 
-for paramset in parameters_combinations:
-    result = process_dataset_curried(paramset)
-    # Clean Nahual server instances to make space for new models
-    # subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")
+# for paramset in parameters_combinations:
+#     result = process_dataset_curried(paramset)
+#     # Clean Nahual server instances to make space for new models
+#     # subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")

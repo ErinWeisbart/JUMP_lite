@@ -65,6 +65,7 @@
                 pkgs.gcc
                 claude-code
                 # python312Packages.venvShellHook
+		duckdb
               ]
               ++ libList;
               shellHook = ''
