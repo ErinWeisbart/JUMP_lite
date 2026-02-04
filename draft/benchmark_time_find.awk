@@ -13,29 +13,33 @@
 # | openphenom    |    379.248 |     0.405012 |    9216 |
 # | subcell       |    270.833 |     0.567138 |    9216 |
 
-BEGIN {printf "*Model* *Images/min* *Hours(total)* *#images*\n"};
+BEGIN {
+    header = "Model Images/min Hours(total) #images"
+
+    printf("%s\n", header);
+};
  {
-    split($1, d, "/")
-    g = d[5]
-    {
-	if (nfiles[g]==0)
-	{
-	    min[g] = $2;
-	    max[g] = $2;
-	}
-	else
-	{
-	    if ($2 < min[g]) min[g] = $2;	
-	    if ($2 > max[g]) max[g] = $2;
+     split($1, d, "/")
+     g = d[5]
+     {
+	 if (nfiles[g]==0)
+	 {
+	     min[g] = $2;
+	     max[g] = $2;
+	 }
+	 else
+	 {
+	     if ($2 < min[g]) min[g] = $2;	
+	     if ($2 > max[g]) max[g] = $2;
 		
-	}
-    }
-    nfiles[g]++;
+	 }
+     }
+     nfiles[g]++;
  };
  END {
      for (k in nfiles)
      {
 	 delta = max[k]-min[k];
-	 printf("%s %s %s %s\n", k, nfiles[k]/delta*60, delta/3600, nfiles[k]);};
+	 printf("%s %.1f %.1f %s\n", k, nfiles[k]/delta*60, delta/3600, nfiles[k]);};
 
  };

@@ -1,14 +1,16 @@
+
 #+OPTIONS: ^:nil
 Tables to export to LaTeX with ease
 
 * Tile size and channels
+|-----------------+-----------+------------------------+------------------------|
 | Model           | Tile size | Channels               | Preprocessing          |
 |-----------------+-----------+------------------------+------------------------|
-| DINOv2 (random) |       224 | Nuclei,AGP,Mito        | standard               |
 | cp_measure      |        NA | Nuclei,AGP,Mito,RNA,ER | minmax, 0-1            |
-| OpenPhenom      |       256 | Nuclei,AGP,Mito,RNA,ER | standard, minmax, 8bit |
-| SubCell         |       448 | Nuclei,AGP,Mito,RNA    | standard               |
-| Morphem         |       224 | Nuclei,AGP,Mito,RNA,ER | standard               |
+| dinov2_random |       224 | Nuclei,AGP,Mito        | standard               |
+| morphem         |       224 | Nuclei,AGP,Mito,RNA,ER | standard               |
+| openphenom      |       256 | Nuclei,AGP,Mito,RNA,ER | standard, minmax, 8bit |
+| subcell         |       448 | Nuclei,AGP,Mito,RNA    | standard               |
 # | DINOv2          |       490 | Nuclei,AGP,Mito        | standard               |
 
 
@@ -32,7 +34,7 @@ This is a more reliable source of ground truth. Each model was instatiated only 
 #+begin_src sh :eval no-export :exports results
   export LC_COLLATE=C
   ls -l --time-style=+%s /work/datasets/aliby_output/*/jump_target2_4plate/jpegxl_lossy_effort_3.zarr/profiles |
-    awk -f benchmark_time.awk | sort
+    awk -f benchmark_time.awk | xargs -I {} $(head -n 2)
 #+end_src
 
 #+RESULTS:
@@ -44,16 +46,26 @@ This is a more reliable source of ground truth. Each model was instatiated only 
 | subcell       |    65.1999 |      2.35583 |    9216 |
 
 We had to fix the fact that half of cp_measure files were processed days before
-#+begin_src sh :eval no-export :exports results 
-export LC_COLLATE=C
-find /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00" -printf "%p %T@\n" | awk -f benchmark_time_find.awk | sort
-  
+#+begin_src sh :eval no-export :exports results  
+  export LC_COLLATE=C
+  find /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00
+  " -printf "%p %T@\n" | awk -f benchmark_time_find.awk | sort
+    
 #+end_src
 
 #+RESULTS:
-| *Model*         | *Images/min* | *Hours(total)* | *#images* |
-| cp_measure    |    1.30622 |      53.7429 |    4212 |
-| dinov2_random |    284.631 |     0.539645 |    9216 |
-| morphem       |    218.363 |     0.703416 |    9216 |
-| openphenom    |    379.248 |     0.405012 |    9216 |
-| subcell       |    270.833 |     0.567138 |    9216 |
+| Model         | Images/min | Hours(total) | #images |
+| openphenom    |      379.2 |          0.4 |    9216 |
+| subcell       |      270.8 |          0.6 |    9216 |
+| cp_measure    |        1.3 |         53.7 |    4212 |
+| morphem       |      218.4 |          0.7 |    9216 |
+| dinov2_random |      284.6 |          0.5 |    9216 |
+
+** Which features are more variable?
+
+Calculate statistics on all features, to validate that the features that drag down feature correlations are basically random noise.
+#+begin_src sql
+    CREATE TABLE IF NOT EXISTS pivoted AS UNPIVOT(SELECT COLUMNS(lambda x: NOT x.starts_with('Metadata')) FROM read_parquet('/work/users/amunoz/projects/JUMP_core/data/cp_measure_jump_target2_4plate_zstd_raw_features.parquet') ON COLUMNS(*);
+  
+    COPY (SELECT *, avg/std AS ratio FROM (SELECT feature, MEAN(value) AS avg, stddev_pop(value) as std, var_pop(value) AS var FROM (SELECT split_part(name, '/', 3) AS feature, value FROM pivoted) WHERE value != 'NaN' GROUP BY feature) ORDER BY ratio) TO 'noisy_features.parquet';
+#+end_src
