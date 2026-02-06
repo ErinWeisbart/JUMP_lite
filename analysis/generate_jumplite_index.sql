@@ -1,6 +1,7 @@
 INSTALL httpfs;
 LOAD httpfs;
 SET enable_progress_bar = true;
+-- replace this table for a list of all plates
 CREATE TABLE jl_plates AS (SELECT Metadata_Plate FROM '/work/datasets/jump_lite/misc/unique_plates.csv');
 CREATE TABLE jump_jl_plates AS (SELECT DISTINCT Metadata_Source,Metadata_Batch,Metadata_Plate FROM read_csv('https://github.com/jump-cellpainting/datasets/raw/refs/heads/main/metadata/plate.csv.gz') NATURAL JOIN jl_plates);
 CREATE TABLE loaddata_uris AS (SELECT *, format('s3://cellpainting-gallery/cpg0016-jump/{}/workspace/load_data_csv/{}/{}/load_data_with_illum.csv', Metadata_Source, Metadata_Batch, Metadata_Plate) AS uri FROM jump_jl_plates);
