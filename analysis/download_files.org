@@ -1,0 +1,9 @@
+#+begin_src sh
+duckdb <generate_jumplite_index.sql
+set -x DEST_DIR "/work/datasets/jump_lite/images"
+
+duckdb -list -c "SELECT uri FROM read_parquet('/work/datasets/jump_lite/misc/jump_index_tidy.parquet');" | awk 'NR>1' | parallel --bar -j0 'var={};trim=${var#s3://cellpainting-gallery/cpg0016-jump/}; aws s3 cp {} ${DEST_DIR}/$trim --no-sign-request'
+# "mkdir -p $DEST_DIR/{//.}; aws s3 cp {} $DEST_DIR/{//} --no-sign-request"
+
+#+end_src
+duckdb -list -c "SELECT uri FROM read_parquet('/work/datasets/jump_lite/misc/jump_index_tidy.parquet');" | awk 'NR>1 {sub("^s3://cellpainting-gallery/cpg0016-jump/","",$0); print}' | parallel --bar -j0 "aws s3 cp s3://cellpainting-gallery/cpg0016-jump/{} $DEST_DIR/{} --no-sign-request"
