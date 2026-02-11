@@ -26,7 +26,6 @@ regex = "(.*)__([A-Z][0-9]{2})__([A-Za-z]+)__([0-9])__Orig.tif"
 capture_order = "PWCF"  # Plate, Well, Channel Foci
 input_dimensions = "YX"
 nchannels = 5
-addresses = [f"ipc:///tmp/cellpose{i}.ipc" for i in range(6)]
 dset = dispatch_dataset(datasets_path, regex=regex, capture_order=capture_order)
 output_basedir = Path("/work/datasets/aliby_output/")
 n_devices = 4
@@ -166,16 +165,20 @@ def process_input_path(
         "save_interval": 1,
     }
 
-    # try:
-    result, _ = run_pipeline_and_post(
-        pipeline=base_pipeline,
-        img_source=input_path["path"],
-        output_path=output_path,
-        fov="__".join(input_path["key"]),  # This is expected a string
-        overwrite=False,
-    )
-    # except Exception as e:
-    #     print(f"Error: {e}")
+    try:
+        fov = "__".join(input_path["key"])
+        result, _ = run_pipeline_and_post(
+            pipeline=base_pipeline,
+            img_source=input_path["path"],
+            output_path=output_path,
+            fov=fov,  # This is expected a string
+            overwrite=False,
+        )
+        logger.info(f"{fov} Finished successfully")
+    except Exception as e:
+        message = f"Error: {fov=}. {e}"
+        logger.error(message)
+        print(message)
 
 
 # %%
@@ -191,14 +194,14 @@ def process_with_timestamp(
     # (input_paths, compression_dir), (model_name, model_params) = parameters
     # input_paths = list(dataset.get_position_ids().values())
     assert len(input_paths), "No files found in input dataset"
-    if __name__ == "__main__":  # Add logging
-        timestamp = strftime("%s%m%d%H%M")
-        output_path = output_basedir / model_name / dataset_name / compression_dir.name
+    # if __name__ == "__main__":  # Add logging
+    timestamp = strftime("%s%m%d%H%M")
+    output_path = output_basedir / model_name / dataset_name / compression_dir.name
 
-        logger.remove()
-        logger.add(output_path / f"{timestamp}_{dataset_name}_{model_name}.log")
-        # if __file__:
-        #     shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+    logger.remove()
+    logger.add(output_path / f"{timestamp}_{dataset_name}_{model_name}.log")
+    # if __file__:
+    #     shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
     print(output_path)
     process_input_path_curried = partial(
@@ -207,7 +210,7 @@ def process_with_timestamp(
         model_name=model_name,
         model_params=model_params,
     )
-    if True:
+    if False:
         with Pool() as p:
             process_input_path_curried2 = partial(
                 process_input_path_curried,
@@ -215,7 +218,7 @@ def process_with_timestamp(
                 output_path=output_path,
                 model_params=model_params,
             )
-            result = p.map(process_input_path_curried2, input_paths)
+            result = p.map(process_input_path_curried2, input_paths[::-1])
     else:
         result = []
         for key_path in input_paths:
@@ -232,6 +235,9 @@ process_dataset_curried = partial(
     output_basedir=output_basedir,
 )
 input_paths = dset.get_position_ids()
+zoom_at = "source_7__20210803_Run5__CP5-SC1-10__K19__4"
+# input_paths = [x for x in input_paths if "__".join(x["key"]) == zoom_at]
+# breakpoint()
 result = process_with_timestamp(  #
     input_paths=input_paths,
     compression_dir=datasets_path,
