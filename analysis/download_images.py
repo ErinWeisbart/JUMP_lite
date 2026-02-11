@@ -84,13 +84,18 @@ from loguru import logger
 #     metadata_all = pl.read_parquet(meta_file)
 
 
-out_dir = Path("/work/datasets/jump_lite/images")
+out_dir = Path("/work/datasets/jump_lite/imgs/raw")
 print("Loading list of files")
 with duckdb.connect() as con:
     uris_list = [
-        x["uri"].removeprefix("s3://cellpainting-gallery/")
+        (
+            *list(x.values())[:-3],
+            str(x["Metadata_Site"]),
+            x["Metadata_Channel"].removeprefix("URL_Orig"),
+            x["uri"].removeprefix("s3://cellpainting-gallery/"),
+        )
         for x in con.sql(
-            "SELECT uri FROM read_parquet('/work/datasets/jump_lite/misc/jump_index_tidy.parquet')"
+            "FROM read_parquet('/work/datasets/jump_lite/misc/jl_index_tidy.parquet')"
         )
         .to_arrow_table()
         .to_pylist()
@@ -98,8 +103,10 @@ with duckdb.connect() as con:
 print("File list ready")
 
 
-def download_uri(key: str, out_dir: str, logger):
-    local_file = out_dir / Path(key)
+def download_uri(meta: list[str], out_dir: str, logger):
+    *location, key = meta
+    local_name = "__".join(location) + ".parquet"
+    local_file = out_dir / Path(local_name)
     Path(local_file).parent.mkdir(exist_ok=True, parents=True)
     s3_client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
@@ -116,7 +123,7 @@ def download_uri(key: str, out_dir: str, logger):
 curried = partial(download_uri, out_dir=out_dir, logger=logger)
 
 
-logger.add(out_dir / "../misc" / "download_log.txt")
+logger.add(out_dir / "../../misc" / "download_log.txt")
 print("Downloads will start now")
 result = list(
     Parallel(n_jobs=-1, backend="threading")(delayed((curried))(x) for x in uris_list)

@@ -53,12 +53,12 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    dinov2=dict(
-        model_group="dinov2",
-        repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vits14",
-        device=-1,
-    ),
+    # dinov2=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vits14",
+    #     device=-1,
+    # ),
     # subcell=dict(
     #     model_group="subcell",
     #     model_type="mae_contrast_supcon_model",
@@ -72,11 +72,11 @@ model_setup_params = dict(
     #     pretrained=False,
     #     device=-1,
     # ),
-    # openphenom=dict(
-    #     model_group="openphenom",
-    #     model_name="recursionpharma/OpenPhenom",
-    #     device=-1,
-    # ),
+    openphenom=dict(
+        model_group="openphenom",
+        model_name="recursionpharma/OpenPhenom",
+        device=-1,
+    ),
     # morphem=dict(
     #     model_group="morphem",
     #     model_name="CaicedoLab/MorphEm",

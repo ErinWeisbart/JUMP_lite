@@ -1,11 +1,190 @@
 #+TITLE: Analyses
+#+PROPERTY: header-args:duckdb :session clean :results output
 
 Summary of analyses to get and process profiles
+* Create JUMP index
+** Pre-Cleanup 
+:PROPERTIES:
+:header-args:duckdb: :session clean:exports both :results output
+:END:
 
-** Download and compress data
+*** Redlisted plates
+
+=redlist.csv= These are based off [[https://github.com/broadinstitute/jump-profiling-recipe/blob/d2512d978ca17aafead0e99de66386337e6312e4/src/jump_profiling_recipe/preprocessing/metadata.py#L278https://github.com/broadinstitute/jump-profiling-recipe/blob/d2512d978ca17aafead0e99de66386337e6312e4/src/jump_profiling_recipe/preprocessing/metadata.py#L278][this]] link. Plates that should NEVER be on the analysis.
+#+begin_src sql :session clean
+  .maxwidth 80
+  .maxrows 4
+  .cd /work/datasets/jump_lite/misc/
+  INSTALL httpfs;
+  LOAD httpfs;
+  CREATE OR REPLACE TABLE redlist AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate)$') FROM read_csv('https://github.com/jump-cellpainting/datasets/raw/refs/heads/main/metadata/plate.csv.gz') WHERE
+  ((Metadata_Source = 'source_4' AND suffix(Metadata_Batch, 'Batch12')) OR
+  (Metadata_Source = 'source_3' AND (regexp_matches(Metadata_Batch, '^CP_3[23456]_all_Phenix1$') OR Metadata_Batch in ['CP59', 'CP60']))));
+  COPY redlist TO 'redlist.csv';
+  FROM redlist;
+#+end_src
+
+#+RESULTS:
+#+begin_example
+┌─────────────────┬────────────────────┬────────────────┐
+│ Metadata_Source │   Metadata_Batch   │ Metadata_Plate │
+│     varchar     │      varchar       │    varchar     │
+├─────────────────┼────────────────────┼────────────────┤
+│ source_3        │ CP59               │ BR5867a3       │
+│ source_3        │ CP59               │ BR5867b3       │
+│    ·            │  ·                 │    ·           │
+│    ·            │  ·                 │    ·           │
+│    ·            │  ·                 │    ·           │
+│ source_4        │ 2021_08_23_Batch12 │ BR00126717     │
+│ source_4        │ 2021_08_23_Batch12 │ BR00126718     │
+├─────────────────┴────────────────────┴────────────────┤
+│ 167 rows (4 shown)                          3 columns │
+└───────────────────────────────────────────────────────┘
+#+end_example
+
+*** Negcon-only plate
+=graylist.csv= These plates contain are full of negative controls.
+#+begin_src duckdb :session clean
+  CREATE OR REPLACE TABLE graylist AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate)$') FROM read_csv('https://github.com/jump-cellpainting/datasets/raw/refs/heads/main/metadata/plate.csv.gz') WHERE regexp_matches(Metadata_Plate, 'CP-CC9-R[123456]-28'));
+  COPY graylist TO 'graylist.csv';
+  FROM graylist;
+#+end_src
+
+#+RESULTS:
+#+begin_results
+┌─────────────────┬────────────────┬────────────────┐
+│ Metadata_Source │ Metadata_Batch │ Metadata_Plate │
+│     varchar     │    varchar     │    varchar     │
+├─────────────────┼────────────────┼────────────────┤
+│ source_13       │ 20220914_Run1  │ CP-CC9-R1-28   │
+│ source_13       │ 20221009_Run2  │ CP-CC9-R2-28   │
+│ source_13       │ 20221017_Run3  │ CP-CC9-R3-28   │
+│ source_13       │ 20221024_Run4  │ CP-CC9-R4-28   │
+│ source_13       │ 20221109_Run5  │ CP-CC9-R5-28   │
+│ source_13       │ 20221120_Run6  │ CP-CC9-R6-28   │
+└─────────────────┴────────────────┴────────────────┘
+#+end_results
+
+** Generate JUMP plate index
+Use the redlist and graylist to generate the JUMPindex
+#+begin_src duckdb :session clean
+  CREATE OR REPLACE TABLE jump_plates AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate)$') FROM read_csv('https://github.com/jump-cellpainting/datasets/raw/refs/heads/main/metadata/plate.csv.gz') ANTI JOIN (FROM 'graylist.csv' UNION ALL FROM 'redlist.csv') using(Metadata_Source,Metadata_Batch,Metadata_Plate));
+  COPY jump_plates TO 'jump_plates.parquet';
+  FROM jump_plates;
+#+end_src
+
+#+RESULTS:
+#+begin_results
+┌─────────────────┬─────────────────┬────────────────┐
+│ Metadata_Source │ Metadata_Batch  │ Metadata_Plate │
+│     varchar     │     varchar     │    varchar     │
+├─────────────────┼─────────────────┼────────────────┤
+│ source_1        │ Batch1_20221004 │ UL000109       │
+│ source_1        │ Batch1_20221004 │ UL001641       │
+│    ·            │       ·         │    ·           │
+│    ·            │       ·         │    ·           │
+│    ·            │       ·         │    ·           │
+│ source_9        │ 20211103-Run16  │ GR00004420     │
+│ source_9        │ 20211103-Run16  │ GR00004421     │
+├─────────────────┴─────────────────┴────────────────┤
+│ 2352 rows (4 shown)                      3 columns │
+└────────────────────────────────────────────────────┘
+#+end_results
+
+** Generate load_data_csv uris
+#+begin_src duckdb :session clean
+  .maxwidth 80
+  CREATE OR REPLACE TABLE jl_plate_index AS (FROM jump_index JOIN (SELECT #2 AS Metadata_Plate FROM 'jl_plates.csv') using(Metadata_Plate));
+  CREATE OR REPLACE TABLE loaddata_uris AS (SELECT *, format('s3://cellpainting-gallery/cpg0016-jump/{}/workspace/load_data_csv/{}/{}/load_data_with_illum.csv', Metadata_Source, Metadata_Batch, Metadata_Plate) AS uri FROM jl_plate_index);
+  SET VARIABLE csv_files = (SELECT list(uri) FROM loaddata_uris);
+#+end_src
+
+#+RESULTS:
+#+begin_results
+#+end_results
+
+*** Load a big table with all load_data_csv files
+#+begin_src sql :session clean
+ CREATE OR REPLACE TABLE jl_index_dense AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate|Well|Site)$'),COLUMNS('URL_Orig(DNA|Mito|AGP|ER|RNA)')  FROM read_csv(getVariable('csv_files'), union_by_name=True));
+  FROM ldc;
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0% ▕██████████████████████████████████████▏ (00:00:11.21 elapsed)     
+┌─────────────────┬────────────────┬───┬──────────────────────┐
+│ Metadata_Source │ Metadata_Batch │ … │     URL_OrigAGP      │
+│     varchar     │    varchar     │   │       varchar        │
+├─────────────────┼────────────────┼───┼──────────────────────┤
+│ source_13       │ 20220914_Run1  │ … │ s3://cellpainting-…  │
+│ source_13       │ 20220914_Run1  │ … │ s3://cellpainting-…  │
+│    ·            │ ·              │ · │          ·           │
+│    ·            │ ·              │ · │          ·           │
+│    ·            │ ·              │ · │          ·           │
+│ source_8        │ J4             │ … │ s3://cellpainting-…  │
+│ source_8        │ J4             │ … │ s3://cellpainting-…  │
+├─────────────────┴────────────────┴───┴──────────────────────┤
+│ 1887910 rows                           10 columns (3 shown) │
+│ 1.89 million rows                                   4 shown │
+└─────────────────────────────────────────────────────────────┘
+#+end_example
+
+*** Sample sites
+To lower the number of sites needed we sample four sites per unique wells. Note that we include all wells of the JUMP-lite plates. We could select specific plates using =/work/datasets/jump_lite/misc/metadata_dataset_filtered_4reps.parquet=.
+#+begin_src sql :session clean
+  CREATE OR REPLACE TABLE jl_index_dense_sampled AS ( SELECT * EXCLUDE rn FROM (SELECT *, row_number() OVER (PARTITION BY Metadata_Plate,Metadata_Well) as rn FROM jl_index_dense) WHERE rn < 5);
+  FROM jl_index_dense_sampled
+#+end_src
+
+#+RESULTS:
+#+begin_example
+0% ▕██████████████████████████████████████▏ (00:00:03.47 elapsed)     
+┌─────────────────┬────────────────────┬───┬──────────────────────┐
+│ Metadata_Source │   Metadata_Batch   │ … │     URL_OrigAGP      │
+│     varchar     │      varchar       │   │       varchar        │
+├─────────────────┼────────────────────┼───┼──────────────────────┤
+│ source_7        │ 20210731_Run4      │ … │ s3://cellpainting-…  │
+│ source_7        │ 20210731_Run4      │ … │ s3://cellpainting-…  │
+│    ·            │       ·            │ · │          ·           │
+│    ·            │       ·            │ · │          ·           │
+│    ·            │       ·            │ · │          ·           │
+│ source_4        │ 2021_08_02_Batch10 │ … │ s3://cellpainting-…  │
+│ source_4        │ 2021_08_02_Batch10 │ … │ s3://cellpainting-…  │
+├─────────────────┴────────────────────┴───┴──────────────────────┤
+│ 855519 rows (4 shown)                      10 columns (3 shown) │
+└─────────────────────────────────────────────────────────────────┘
+#+end_example
+*** Unpivot to have a column with al lthe individual images
+#+begin_src sql :session clean
+  CREATE OR REPLACE TABLE jl_index_tidy AS (
+  UNPIVOT jl_index_dense_sampled ON COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
+  COPY jl_index_tidy TO 'jl_index_tidy.parquet';
+  FROM jl_index_tidy;
+#+end_src
+
+#+RESULTS:
+#+begin_example
+┌─────────────────┬───┬──────────────────┬──────────────────────┐
+│ Metadata_Source │ … │ Metadata_Channel │         uri          │
+│     varchar     │   │     varchar      │       varchar        │
+├─────────────────┼───┼──────────────────┼──────────────────────┤
+│ source_7        │ … │ URL_OrigRNA      │ s3://cellpainting-…  │
+│ source_7        │ … │ URL_OrigMito     │ s3://cellpainting-…  │
+│    ·            │ · │      ·           │          ·           │
+│    ·            │ · │      ·           │          ·           │
+│    ·            │ · │      ·           │          ·           │
+│ source_4        │ … │ URL_OrigDNA      │ s3://cellpainting-…  │
+│ source_4        │ … │ URL_OrigAGP      │ s3://cellpainting-…  │
+├─────────────────┴───┴──────────────────┴──────────────────────┤
+│ 4277595 rows (4.28 million rows, 4 shown) 7 columns (3 shown) │
+└───────────────────────────────────────────────────────────────┘
+#+end_example
+
+** Download data
+
+** Compress data
 First download and compress data
 #+begin_src
-  python ../src/download_images.py
   python ../src/compress_tif.py
 #+end_src
 
