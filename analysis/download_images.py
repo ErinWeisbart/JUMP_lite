@@ -3,10 +3,7 @@ from pathlib import Path
 
 import boto3
 import duckdb
-from botocore import UNSIGNED
-from botocore.config import Config
 from joblib import Parallel, delayed
-from loguru import logger
 
 # meta_file = out_path.parent / "metadata.parquet"
 # progress_file = out_path.parent / "progress.txt"
@@ -103,16 +100,23 @@ with duckdb.connect() as con:
 print("File list ready")
 
 
-def download_uri(meta: list[str], out_dir: str, logger):
+# %%
+def download_uri(meta: list[str], out_dir: str):
+    from botocore import UNSIGNED
+    from botocore.config import Config
+    from loguru import logger
+
     *location, key = meta
-    local_name = "__".join(location) + ".parquet"
+    local_name = "__".join(location) + ".tif"
     local_file = out_dir / Path(local_name)
     Path(local_file).parent.mkdir(exist_ok=True, parents=True)
     s3_client = boto3.client("s3", config=Config(signature_version=UNSIGNED))
 
     try:
         if not local_file.exists():
-            logger.info(f"Downloading {key} into {local_file}")
+            logger.add(out_dir / "../../misc" / "download_log.txt")
+            text = f"Downloading {key} into {local_file}"
+            logger.info(text)
             s3_client.download_file("cellpainting-gallery", key, str(local_file))
             logger.info(f"{key} was successfully downloaded")
 
@@ -120,11 +124,8 @@ def download_uri(meta: list[str], out_dir: str, logger):
         logger.error(f"{key} Failed: {e}")
 
 
-curried = partial(download_uri, out_dir=out_dir, logger=logger)
+curried = partial(download_uri, out_dir=out_dir)
 
 
-logger.add(out_dir / "../../misc" / "download_log.txt")
 print("Downloads will start now")
-result = list(
-    Parallel(n_jobs=-1, backend="threading")(delayed((curried))(x) for x in uris_list)
-)
+result = list(Parallel(n_jobs=192)(delayed((curried))(x) for x in uris_list))
