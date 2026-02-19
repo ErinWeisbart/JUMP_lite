@@ -20,12 +20,14 @@ from tqdm import tqdm
 numcodecs.register_codec(Jpegxl)
 
 # dataset = "jump_target2_subset_BR00121438"
-# dataset = "jump_target2_4plate"
-dataset = "jump_core_annotated"
+dataset = "jump_target2_4plate"
+# dataset = "jump_core_annotated"
 datasets_path = Path(f"/work/datasets/{dataset}")
-compression_paths = [x for x in datasets_path.glob("*/") if x.name != "raw"]
+compression_paths = [
+    x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_d")
+]
 n_devices = 4
-n_addresses = 48
+n_addresses = 20
 
 # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # These tell us when to pad or select channels to match the models
@@ -53,35 +55,35 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    # dinov2=dict(
-    #     model_group="dinov2",
-    #     repo_or_dir="facebookresearch/dinov2",
-    #     model_name="dinov2_vits14",
-    #     device=-1,
-    # ),
-    # subcell=dict(
-    #     model_group="subcell",
-    #     model_type="mae_contrast_supcon_model",
-    #     model_channels="rybg",
-    #     device=-1,
-    # ),
-    # dinov2_random=dict(
-    #     model_group="dinov2",
-    #     repo_or_dir="facebookresearch/dinov2",
-    #     model_name="dinov2_vits14",
-    #     pretrained=False,
-    #     device=-1,
-    # ),
     openphenom=dict(
         model_group="openphenom",
         model_name="recursionpharma/OpenPhenom",
         device=-1,
     ),
-    # morphem=dict(
-    #     model_group="morphem",
-    #     model_name="CaicedoLab/MorphEm",
-    #     device=-1,
-    # ),
+    morphem=dict(
+        model_group="morphem",
+        model_name="CaicedoLab/MorphEm",
+        device=-1,
+    ),
+    dinov2=dict(
+        model_group="dinov2",
+        repo_or_dir="facebookresearch/dinov2",
+        model_name="dinov2_vits14",
+        device=-1,
+    ),
+    subcell=dict(
+        model_group="subcell",
+        model_type="mae_contrast_supcon_model",
+        model_channels="rybg",
+        device=-1,
+    ),
+    dinov2_random=dict(
+        model_group="dinov2",
+        repo_or_dir="facebookresearch/dinov2",
+        model_name="dinov2_vits14",
+        pretrained=False,
+        device=-1,
+    ),
 )
 model_params = {
     model_name: {
@@ -212,12 +214,15 @@ def process_with_timestamp(
         model_name=model_name,
         model_params=model_params,
     )
-    with Pool() as p:
-        result = p.map(process_input_path_curried, input_paths)
-    # result = [
-    #     process_input_path(input_path_d, output_path, model_name, model_params)
-    #     for group_key, input_path_d in tqdm(input_paths.items())
-    # ]
+    # Thread or not
+    if True:
+        with Pool() as p:
+            result = p.map(process_input_path_curried, input_paths)
+    else:
+        result = [
+            process_input_path(input_path_d, output_path, model_name, model_params)
+            for group_key, input_path_d in tqdm(input_paths.items())
+        ]
     # print(f"Processing took {perf_counter() - t0} seconds")
     return result
 
