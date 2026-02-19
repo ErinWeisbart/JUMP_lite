@@ -20,12 +20,13 @@ from tqdm import tqdm
 numcodecs.register_codec(Jpegxl)
 
 # dataset = "jump_target2_subset_BR00121438"
-dataset = "jump_target2_4plate"
+# dataset = "jump_target2_4plate"
 # dataset = "jump_core_annotated"
-datasets_path = Path(f"/work/datasets/{dataset}")
+dataset = "jump_lite_updated"
+datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
 compression_paths = [
-    x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_d")
-][::-1]
+    x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_mq")
+]
 n_devices = 4
 n_addresses = 20
 
@@ -49,7 +50,6 @@ model_groups_inputs = dict(
     morphem=dict(
         tile_size=224,
         selected_channels=[0, 1, 2, 3, 4],
-        # minmax_8bit=True,
     ),
 )
 
@@ -245,7 +245,7 @@ parameters_combinations = list(
 #     delayed(process_dataset_curried)(x) for x in parameters_combinations
 # )
 
-for paramset in parameters_combinations:
-    result = process_dataset_curried(paramset)
+# for paramset in parameters_combinations:
+#     result = process_dataset_curried(paramset)
 # Clean Nahual server instances to make space for new models
 # subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")
