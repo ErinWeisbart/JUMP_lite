@@ -25,7 +25,7 @@ dataset = "jump_target2_4plate"
 datasets_path = Path(f"/work/datasets/{dataset}")
 compression_paths = [
     x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_d")
-]
+][::-1]
 n_devices = 4
 n_addresses = 20
 
@@ -111,7 +111,7 @@ def process_input_path(
     ipc_addr = model_params["address"]
     setup_params = model_params["setup_params"]
     if "{}" in ipc_addr:
-        hashed_input = hash(str(input_path))
+        hashed_input = hash(str(input_path["key"]))
         hashed_input_int = int(hashed_input)
         address_id = hashed_input_int % n_addresses
         ipc_addr = ipc_addr.format(f"_{address_id}")
@@ -191,7 +191,7 @@ def process_with_timestamp(
     output_basedir: str | Path,
     dataset_name: str,
 ):
-    (input_paths, compression_dir), (model_name, model_params) = parameters
+    (model_name, model_params), (input_paths, compression_dir) = parameters
     assert len(input_paths), "No files found in input dataset"
     if __name__ == "__main__":  # Add logging
         timestamp = strftime("%s%m%d%H%M")
@@ -217,11 +217,12 @@ def process_with_timestamp(
     # Thread or not
     if True:
         with Pool() as p:
-            result = p.map(process_input_path_curried, input_paths)
+            result = p.map(process_input_path_curried, input_paths.values())
     else:
         result = [
-            process_input_path(input_path_d, output_path, model_name, model_params)
-            for group_key, input_path_d in tqdm(input_paths.items())
+            process_input_path_curried(input_path)
+            for input_path in input_paths.values()
+            # for group_key, input_path_d in tqdm(input_paths.items())
         ]
     # print(f"Processing took {perf_counter() - t0} seconds")
     return result
@@ -234,7 +235,10 @@ process_dataset_curried = partial(
 )
 
 parameters_combinations = list(
-    product(list(zip(input_paths, compression_paths)), model_params.items())
+    product(
+        model_params.items(),
+        list(zip(input_paths, compression_paths)),
+    )
 )
 
 # result = Parallel(5)(
@@ -243,5 +247,5 @@ parameters_combinations = list(
 
 for paramset in parameters_combinations:
     result = process_dataset_curried(paramset)
-    # Clean Nahual server instances to make space for new models
-    # subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")
+# Clean Nahual server instances to make space for new models
+# subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")

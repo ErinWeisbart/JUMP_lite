@@ -3,7 +3,6 @@
 # ViT-based models
 for i in {0..20}; do
 	for model in morphem openphenom; do
-		# for model in openphenom; do
 		session_name="${model}_${i}"
 		ipc_addr="ipc:///tmp/${session_name}.ipc"
 		echo "Starting ${model} instance in screen session '${session_name}'"
@@ -16,6 +15,7 @@ for i in {0..20}; do
 	session_name="subcell_${i}"
 	ipc_addr="ipc:///tmp/subcell_${i}.ipc"
 	echo "Starting subcell instance in screen session '${session_name}'"
+	screen -S "${session_name}" -dm bash -c "nix run github:afermg/SubCellPortable ${ipc_addr}"
 done
 
 # Dinov2 Random
