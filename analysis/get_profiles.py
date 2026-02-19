@@ -29,7 +29,8 @@ compression_paths = [
 addresses = [f"ipc:///tmp/cellpose_{i}.ipc" for i in range(1, 9)]
 n_devices = 4
 # extract_ncores = None
-extract_ncores = os.cpu_count()
+# extract_ncores = os.cpu_count()
+extract_ncores = 10
 
 
 # %%
@@ -70,7 +71,7 @@ for compression_dir, dset in tqdm(zip(compression_paths, dsets), total=len(dsets
     ]
 
     if True:
-        result = Parallel(30)(
+        result = Parallel(5)(
             delayed(pipeline_curried[i])(img_source=x)
             for i, x in enumerate(input_paths)
         )
