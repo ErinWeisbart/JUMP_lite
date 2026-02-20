@@ -16,3 +16,11 @@
 - **Deps:** see `analysis/image_quality/pyproject.toml` (torch, torchmetrics, lpips, zarr, imagecodecs)
 - **Args:** `--data-dir <path>` (default: `/work/datasets/jump_target2_4plate`), `--figures-only` (skip computation, plot from existing CSV)
 - **Run:** `cd analysis/image_quality && uv run python compare_codecs.py --data-dir /path/to/zarr/files`
+
+## Auxiliary: Compression Parameter Exploration
+- **Script:** `analysis/compression_exploration/explore.py`
+- **Purpose:** Auxiliary exploration of JPEG XL compression parameters (distance vs effort grid). Not part of the main pipeline — used for ad-hoc investigation of compression trade-offs.
+- **Input:** Raw TIF images + compressed zarr files
+- **Output:** Comparison plots, histograms
+- **Args:** `--hist-only` (only run histogram + peak comparison)
+- **Run:** `nix develop . uv run python analysis/compression_exploration/explore.py`
