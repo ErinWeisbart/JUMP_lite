@@ -100,12 +100,13 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     return {name: perf_counter() - t_start}
 
 
-input_dir = Path("/work/datasets/jump_target2_4plate/raw")
-output_dir = input_dir.parent
+input_dir = Path("/work/datasets/jump_target2_4plate_bak/raw")
+output_dir = Path("/work/datasets/jump_target2_4plate/")
+
 
 print("Input dir:", input_dir)
 print("Output dir:", output_dir)
-overwrite = True
+overwrite = False
 
 output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,10 +116,7 @@ filters = [
     dict(id=lzma.FILTER_LZMA2, preset=9),
 ]
 compressing_algs = {
-    # "lz4": {"clevel": 9}, # Too similar to lz4hc, but usually worse
-    # "lz4hc": {"clevel": 9},
-    "zstd": {"clevel": 9},
-    # "zlib": {"clevel": 9},
+    "zstd": {"clevel": 9}
 }
 compressors_blosc = {
     k: BloscCodec(cname=k, shuffle="bitshuffle", **v)
@@ -126,32 +124,23 @@ compressors_blosc = {
 }
 
 compressors = {
-    **compressors_blosc,
+    # **compressors_blosc,
 }
 
 # Add imagecodecs compressors if available
 if IMAGECODECS_AVAILABLE:
     compressors.update({
-        # "brotli": Brotli(level=11),
-        # "jpegxl_lossless": Jpegxl(lossless=True, level=9),
-        "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
-        # "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
-        "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
-        # "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
-        "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
-        # "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
-        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
-        # "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
-        # "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
-        # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
-        # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
+        # "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
+        # "jpegxl_lossy_d2_e8": Jpegxl(lossless=False, distance=2.0, effort=8),
+        # "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
+        # "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
+        # "jpegxl_lossy_d10": Jpegxl(lossless=False, distance=10.0),
+        # "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3)
+        # "jpegxl_lossy_d15": Jpegxl(lossless=False, distance=15.0),
+        # "jpegxl_lossy_d20_e2": Jpegxl(lossless=False, distance=20.0, effort=2),
+        # "jpegxl_lossy_d30": Jpegxl(lossless=False, distance=30.0),
+        "jpegxl_lossy_d50": Jpegxl(lossless=False, distance=50.0),
     })
-# for v in {
-#     "preset": {"preset": 9},
-#     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
-# }.values():
-#     compressors[k]append(LZMA(**v))
-
 
 # %% Group files based on their name
 
