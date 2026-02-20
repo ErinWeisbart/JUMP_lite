@@ -217,3 +217,66 @@ Batch scripts that orchestrate Step 5 across many datasets and codecs, with GPU 
 - **Script:** `sweep_runner_single_loop.sh`
 - **Purpose:** Generic sweep orchestrator using norm_2 (CPU pipeline). Loops over models × compressions, runs Optuna sweeps, aggregates results, and generates summary. Template for building new sweep scripts.
 - **Run:** `bash sweep_runner_single_loop.sh`
+
+## Step 0: Build Metadata Dataset
+- **Script:** `scripts/build_metadata_dataset.py`
+- **Purpose:** Unified 6-step pipeline that generates the final filtered metadata dataset. Combines logic from `standardize_annotations.py`, `download_images.py`, `analyze_metadata.py`, `prepare_negative_controls.py`, `compare_metadata_profiles.py`, and `compare_compound_overlap.py`.
+- **Input:** MOTIVE annotation databases, JUMP perturbation lists (downloaded), raw CellProfiler profiles, RefChemDB annotations
+- **Output:** `metadata_dataset_filtered_4reps.parquet` (wells with ≥4 compound replicates, plus ORF/CRISPR/negcons)
+- **Deps:** polars, duckdb, broad_babel, jump_portrait, pooch
+- **Args:**
+  - `--annotations-db <path>` JUMP metadata DuckDB
+  - `--annotations-cc <path>` MOTIVE compound-compound parquet
+  - `--annotations-cg <path>` MOTIVE compound-gene parquet
+  - `--profiles <path>` Raw CellProfiler profiles parquet
+  - `--refchemdb <path>` RefChemDB annotations parquet (optional, for overlap stats)
+  - `--output-dir <path>` Output directory
+  - `--skip-to <1-6>` Resume from a specific step (requires intermediates)
+  - `--save-intermediates` Save per-step parquet outputs
+  - `--min-fill-rate <float>` Minimum plate fill rate (default: 0.25)
+  - `--min-replicates <int>` Minimum replicates per compound (default: 4)
+  - `--seed <int>` Random seed for negative control sampling (default: 42)
+- **Run:** `nix develop . uv run python scripts/build_metadata_dataset.py --annotations-db /work/datasets/jump_core/annotations/jump_metadata.duckdb --annotations-cc /work/datasets/jump_core/annotations/annotations_compound_compound.parquet --annotations-cg /work/datasets/jump_core/annotations/annotations_compound_gene.parquet --profiles /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet --output-dir metadata/ --save-intermediates`
+
+## Utility: CellProfiler Feature Mapping
+- **Script:** `src/utils/map_cellprofiler_features.py`
+- **Purpose:** Maps CellProfiler features between traditional naming (`Compartment_Category_FeatureName_Parameters`) and cp_measure naming (`compartment_channel/aggregation/featuretype_FeatureName`). Provides `FeatureMapper` class used by `analysis/feature_similarity/correlate_vs_raw_cp.py`.
+- **Deps:** polars, pandas
+
+## Step 7: Phenotypic Activity & Consistency Evaluation
+- **Script:** `evaluation/evaluate_phenotypic_activity.py`
+- **Purpose:** Evaluates Phenotypic Activity (compound replicate retrieval via copairs mAP) and Phenotypic Consistency (target-based compound retrieval) per compound. Also calls cross-modality retrieval.
+- **Input:** Normalized profile parquet from Step 5/6, metadata, RefChemDB annotations
+- **Output:** Per-compound PA/PC metrics JSON, evaluation summary, CSVs
+- **Deps:** polars, copairs, numpy
+- **Args:**
+  - `--input <path>` (required) Profiles parquet
+  - `--annotations <path>` RefChemDB annotations (default: `metadata/refchemdb_conf_jump_matched.parquet`)
+  - `--metadata <path>` Metadata parquet (default: `metadata/metadata_dataset.parquet`)
+  - `--output <path>` Output directory
+  - `--null-size <N>` Null distribution size (default: 10000)
+  - `--p-threshold <float>` Significance threshold (default: 0.05)
+  - `--min-compounds-per-target <N>` Min compounds per target for PC (default: 3)
+  - `--skip-batch-effects` Skip batch effect calculation
+  - `--skip-cross-modality` Skip cross-modality retrieval
+  - `--no-annotations` Skip merging annotations (pre-annotated data)
+  - `--no-metadata` Skip merging metadata (data already has compound IDs)
+  - `--include-genetic-pairs` Include ORF vs CRISPR cross-modality
+- **Run:** `nix develop . uv run python evaluation/evaluate_phenotypic_activity.py --input data/features/output.parquet`
+
+- **Script:** `evaluation/evaluate_cross_modality_retrieval.py`
+- **Purpose:** Cross-modality retrieval — ranks ORF/CRISPR profiles by cosine similarity to compound profiles based on shared targets. Calculates recall@k%. Called by `evaluate_phenotypic_activity.py`.
+- **Deps:** numpy, polars
+
+## Step 8: Batch Effect Analysis
+- **Script:** `evaluation/analyze_batch_effects.py`
+- **Purpose:** Analyzes well position and plate batch effects across sweep output parquets using copairs-based similarity. Uses random sampling for speed.
+- **Input:** Sweep output directory containing `output.parquet` files
+- **Output:** `batch_effects.csv` summary + per-config `batch_effects.json`
+- **Deps:** polars, numpy, copairs
+- **Args:**
+  - `--sweep-dir <path>` Sweep output directory (default: `src/norm_3/data/features/unified_batch_sweep`)
+  - `--output <path>` Output CSV path
+  - `--seed <int>` Random seed (default: 42)
+  - `--no-individual` Don't save per-config JSON files
+- **Run:** `nix develop . uv run python evaluation/analyze_batch_effects.py --sweep-dir data/features/my_sweep`
