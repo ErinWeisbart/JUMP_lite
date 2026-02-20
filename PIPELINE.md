@@ -238,6 +238,11 @@ Batch scripts that orchestrate Step 5 across many datasets and codecs, with GPU 
   - `--seed <int>` Random seed for negative control sampling (default: 42)
 - **Run:** `nix develop . uv run python scripts/build_metadata_dataset.py --annotations-db /work/datasets/jump_core/annotations/jump_metadata.duckdb --annotations-cc /work/datasets/jump_core/annotations/annotations_compound_compound.parquet --annotations-cg /work/datasets/jump_core/annotations/annotations_compound_gene.parquet --profiles /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet --output-dir metadata/ --save-intermediates`
 
+- **Notebook:** `scripts/04_refchemdb_match.ipynb`
+- **Purpose:** Generates `refchemdb_conf_jump_matched.parquet` — the RefChemDB target annotation file used as optional input to `build_metadata_dataset.py` Step 6 (via `--refchemdb`). Filters RefChemDB to gene targets with confident interactions, adds CrossModalityTier and WithinModalityTier classifications, and matches compound mode with perturbation modality.
+- **Input:** RefChemDB overlap CSV (`ref_chem_overlap.csv`), JUMP perturbation metadata
+- **Output:** `refchemdb_conf_jump_matched.parquet`
+
 ## Utility: CellProfiler Feature Mapping
 - **Script:** `src/utils/map_cellprofiler_features.py`
 - **Purpose:** Maps CellProfiler features between traditional naming (`Compartment_Category_FeatureName_Parameters`) and cp_measure naming (`compartment_channel/aggregation/featuretype_FeatureName`). Provides `FeatureMapper` class used by `analysis/feature_similarity/correlate_vs_raw_cp.py`.
