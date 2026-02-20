@@ -1,6 +1,6 @@
 # Pipeline Steps
 
-## Step 1: Image Compression
+## Step 1a: Image Compression (batch)
 - **Script:** `src/compress_tif.py`
 - **Input:** Raw 16-bit TIF microscopy images (5-channel Cell Painting), grouped by site
 - **Output:** Zarr arrays `(5, H, W)` per site, compressed with specified codec
@@ -8,6 +8,55 @@
 - **Deps:** numpy, zarr, joblib, PIL, imagecodecs, numcodecs, scikit-image
 - **Config:** Edit `input_dir`, `output_dir`, and uncomment desired codecs in the `compressors` dict directly in the script
 - **Run:** `nix develop . uv run python src/compress_tif.py`
+
+## Step 1b: Image Compression (single codec, CLI)
+- **Script:** `src/compress_tif_single.py`
+- **Input:** Raw 16-bit TIF images directory
+- **Output:** Zarr array per site, compressed with the specified codec
+- **Args:**
+  - `--input <path>` (required) Input directory containing .tif files
+  - `--output <path>` (required) Output directory for zarr files
+  - `--codec <name>` (required) Codec: `zstd`, `jpegxl_lossy_hq`, `jpegxl_lossy_mq`, `jpegxl_lossy_lq`, `jpegxl_lossy_effort_3`
+  - `--overwrite` Overwrite existing zarr files
+  - `--n-jobs <N>` Parallel workers (default: 16)
+  - `--no-skip-existing` Recompress everything
+- **Run:** `nix develop . uv run python src/compress_tif_single.py --input /work/datasets/raw --output /work/datasets/compressed --codec jpegxl_lossy_hq`
+
+## Step 1c: Feature Extraction
+- **Script:** `src/extract_features.py`
+- **Input:** Feature profiles from aliby_output directory tree (`MODEL/DATASET/COMPRESSION/profiles/*.parquet`)
+- **Output:** Well-level aggregated features parquet (`{model}_{dataset}_{compression}_raw_features.parquet`)
+- **Deps:** duckdb, polars, trommel
+- **Args:**
+  - `--input <path>` aliby_output directory
+  - `--output <path>` Output directory
+  - `--model <name>` Model name filter
+  - `--compression <name>` Compression name filter
+  - `--dataset <name>` Dataset name filter
+  - `--cache-dir <path>` DuckDB cache directory
+  - `--filter-border-cells` Exclude cells touching image borders
+- **Run:** `nix develop . uv run python src/extract_features.py --input /work/datasets/aliby_output --output output/ --model cp_measure --compression zstd.zarr`
+
+- **Script:** `src/extract_features_with_size_filter.py`
+- **Purpose:** Same as extract_features.py but with additional cell size filtering
+- **Additional args:**
+  - `--filter-size` Enable size-based filtering
+  - `--min-nuclei-diameter <px>` Minimum nuclei diameter
+  - `--min-cell-diameter <px>` Minimum cell diameter
+- **Run:** `nix develop . uv run python src/extract_features_with_size_filter.py --input /work/datasets/aliby_output --output output/ --model cp_measure --filter-border-cells --filter-size`
+
+## Step 1d: Reformat Raw CellProfiler Profiles
+- **Script:** `src/reformat_raw_cp_profiles.py`
+- **Input:** Raw CellProfiler profiles parquet + metadata parquet with wells of interest
+- **Output:** Reformatted parquet with standardized `Metadata_*` columns and model/compression tags
+- **Args:**
+  - `--source <path>` (required) Source profiles parquet
+  - `--metadata <path>` (required) Metadata parquet with wells of interest
+  - `--output <path>` (required) Output parquet file
+  - `--model <name>` Metadata_model value (default: `cellprofiler_raw`)
+  - `--dataset <name>` Metadata_dataset value (default: `jump_core_annotated`)
+  - `--compression <name>` Metadata_compression value (default: `none`)
+- **Run:** `nix develop . uv run python src/reformat_raw_cp_profiles.py --source /path/to/profiles.parquet --metadata metadata/metadata_dataset_filtered_4reps.parquet --output output/reformatted.parquet`
 
 ## Step 2: Image Quality Assessment
 - **Script:** `analysis/image_quality/compare_codecs.py`
