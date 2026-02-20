@@ -198,3 +198,22 @@
   - `--exclude-families <name> [...]` Exclude model families from plots
   - `--exclude-codecs <name> [...]` Exclude codecs from plots
 - **Run:** `nix develop . uv run python src/norm_3/gather_sweep_results.py --sweep-dir data/features/my_sweep --plot`
+
+## Sweep Runner Scripts
+Batch scripts that orchestrate Step 5 across many datasets and codecs, with GPU memory cleanup between runs.
+
+- **Script:** `run_focused_v6_sweep.sh`
+- **Purpose:** Latest comprehensive sweep. Two parts: CellProfiler models (15 datasets × 54 configs via `focused_cp_v6`) + Deep Learning models (35 datasets × 12 configs via `focused_dl_v6`). Covers CP raw, CP filtered-border-size, DINOv2, SubCell, MorphEm, OpenPhenom across 7-9 JPEG-XL distance levels.
+- **Run:** `bash run_focused_v6_sweep.sh`
+
+- **Script:** `run_variance_first_v5_cl_filtered_sweep.sh`
+- **Purpose:** Variance-first pipeline ordering (filter→normalize→prune→PCA→batch-correct). 52 datasets × 20 configs via `simple_cellprofiler_variance_first_v5`. Covers all model families (CP, DINOv2, SubCell, MorphEm, OpenPhenom) across all codecs.
+- **Run:** `bash run_variance_first_v5_cl_filtered_sweep.sh`
+
+- **Script:** `run_variance_first_v5_CP1_annotations_sweep.sh`
+- **Purpose:** Same as v5 but evaluates using CPJUMP1 primary target annotations (Chandrasekaran et al. 2024) — 130 curated targets with 2 compounds each — instead of the full target list. 43 datasets × 20 configs.
+- **Run:** `CUDA_VISIBLE_DEVICES=3 bash run_variance_first_v5_CP1_annotations_sweep.sh`
+
+- **Script:** `sweep_runner_single_loop.sh`
+- **Purpose:** Generic sweep orchestrator using norm_2 (CPU pipeline). Loops over models × compressions, runs Optuna sweeps, aggregates results, and generates summary. Template for building new sweep scripts.
+- **Run:** `bash sweep_runner_single_loop.sh`
