@@ -1,0 +1,179 @@
+# @package _global_
+
+# Focused sweep for TVN EFAAR conditioning parameters
+#
+# Tests different epsilon and n_components values to find best conditioning
+# Uses the best settings from unified_batch_sweep as base:
+#   - use_wellcorr: true
+#   - use_spherize: false (per EFAAR paper)
+#
+# Only 9 configs per model: 3 epsilon x 3 n_components
+
+defaults:
+  - /preset/gpu_base
+
+# Override output to separate folder
+output:
+  path: "data/features/tvn_conditioning_sweep/output.parquet"
+  compression: zstd
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+skip_existing: true
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: false  # Don't abort, we want to see the results
+max_pc1_variance: 0.70
+
+# === FIXED BEST SETTINGS ===
+batch_method: tvn_efaar
+norm_method: robustmad
+norm_fit_controls: true
+
+use_wellcorr: true
+use_int: true
+use_sample_norm: false
+sample_norm_type: l2
+
+use_spherize: false  # Per EFAAR paper - no spherize after TVN
+spherize_fit_controls: true
+spherize_method: "PCA-cor"
+
+use_pca: false
+pca_n_components: 128
+
+use_filter_features: true
+use_prune_correlated: true
+corr_thresh: 0.90
+
+agg_method: mean
+
+# === TVN EFAAR DEFAULTS (will be swept) ===
+tvn_efaar_epsilon: 0.5
+tvn_efaar_n_components: 128
+
+# === FIXED PARAMETERS ===
+skip_visualization: true
+
+# === STEPS ===
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.3
+
+  - name: filter_features
+    enabled: true
+    params:
+      filters:
+        - name: variance_threshold
+          freq_cut: 0.05
+          unique_cut: 0.01
+        - name: drop_na_columns
+          threshold: 0.05
+
+  - name: merge_metadata
+    enabled: true
+    params:
+      metadata_path:
+        - /home/jfredinh/projects/JUMP_core/metadata/metadata_dataset_filtered_4reps.parquet
+        - /home/jfredinh/projects/JUMP_core/metadata/dataset_overlaps/refchemdb_targets_by_jcp.parquet
+      skip_merge: false
+
+  - name: normalize_robustmad
+    enabled: false
+    params:
+      fit_on_controls: true
+      batch_col: Metadata_Plate
+      epsilon: 1e-18
+
+  - name: normalize_standardize
+    enabled: false
+    params:
+      fit_on_controls: true
+      batch_col: Metadata_Plate
+
+  - name: sample_norm
+    enabled: false
+    params:
+      norm: l2
+
+  - name: well_position_correct
+    enabled: true
+    params:
+      well_col: Metadata_Well
+
+  - name: inverse_normal_transform
+    enabled: true
+    params: {}
+
+  - name: normalize_pca
+    enabled: false
+    params:
+      n_components: 128
+      fit_on_controls: false
+      whiten: false
+
+  - name: normalize_tvn
+    enabled: false
+    params:
+      alpha: 0.5
+      batch_col: Metadata_Plate
+      epsilon: 1.0
+      fit_on_controls: true
+
+  - name: normalize_tvn_efaar
+    enabled: true
+    params:
+      batch_col: Metadata_Batch
+      epsilon: 0.5
+      n_components: 128
+
+  - name: normalize_spherize
+    enabled: false
+    params:
+      method: "PCA-cor"
+      batch_col: ""
+      epsilon: 1e-6
+      fit_on_controls: true
+
+  - name: prune_correlated
+    enabled: true
+    params:
+      threshold: 0.90
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata:
+        - Metadata_Plate
+        - Metadata_Well
+      method: mean
+
+  - name: evaluate_metrics
+    enabled: true
+    params:
+      skip_visualization: true
+      compound_col: Metadata_JCP2022
+      target_col: Metadata_WithinModalityTier_Tier3_Target
+      negcon_col: Metadata_negcon
+      negcon_value: DMSO
+      batch_col: Metadata_Plate
+      min_compounds_per_target: 2
+
+# === HYDRA SWEEP ===
+# Only 9 configs: 3 epsilon x 3 n_components
+hydra:
+  sweeper:
+    params:
+      # TVN EFAAR epsilon: regularization strength
+      tvn_efaar_epsilon: 0.5,1.0,2.0
+
+      # TVN EFAAR PCA components: fewer = better conditioning
+      tvn_efaar_n_components: 128,64,32
+
+  launcher:
+    n_jobs: 2
+    prefer: processes
+    verbose: 1

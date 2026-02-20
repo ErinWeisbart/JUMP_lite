@@ -1,0 +1,52 @@
+# Test config: StandardScaler + TVN
+
+input:
+  path: "output/dinov2_random_jump_target2_4plate_zstd_raw_features.parquet"
+
+output:
+  path: "data/features/norm3_test/output.parquet"
+  compression: zstd
+
+abort_on_invalid_features: true
+max_pc1_variance: 0.50
+abort_on_ill_conditioned_tvn: false
+
+steps:
+  - name: clean_nans
+    enabled: true
+    params:
+      na_cutoff: 0.30
+
+  - name: normalize_standardize
+    enabled: true
+    params:
+      batch_col: Metadata_Plate
+      fit_on_controls: false
+
+  - name: normalize_pca
+    enabled: true
+    params:
+      n_components: 128
+      whiten: false
+      fit_on_controls: false
+
+  - name: normalize_tvn
+    enabled: true
+    params:
+      alpha: 0.5
+      epsilon: 1.0
+      batch_col: Metadata_Plate
+      fit_on_controls: false
+
+  - name: aggregate_wells
+    enabled: true
+    params:
+      strata:
+        - Metadata_Plate
+        - Metadata_Well
+      method: median
+
+  - name: evaluate_metrics
+    enabled: false
+    params:
+      skip_visualization: true

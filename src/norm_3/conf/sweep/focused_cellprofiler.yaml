@@ -1,0 +1,82 @@
+# @package _global_
+
+# Focused CellProfiler Sweep for norm_3
+#
+# Based on analysis of previous CellProfiler results:
+# - tvn_efaar is essential for good PA (46.58 vs ~1 without)
+# - prune_correlated is always needed
+# - filter_features is essential for high-dimensional CP features
+# - ZCA-cor spherize can improve PC but slightly hurts PA
+# - agg_method (median vs mean) has minimal effect
+# - No PCA used for CellProfiler
+#
+# ~16 unique configs
+#
+# === USAGE ===
+#   cd src/norm_3
+#   pixi run python -m norm_3.pipeline --multirun \
+#     +sweep=focused_cellprofiler \
+#     input.path=/path/to/cellprofiler.parquet
+
+defaults:
+  - /preset/gpu_base
+
+# Override output to separate folder
+output:
+  path: "data/features/focused_cellprofiler_sweep/output.parquet"
+  compression: zstd
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+skip_existing: true
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70
+
+# === DEFAULT VALUES ===
+batch_method: none
+norm_method: robustmad
+norm_fit_controls: true
+
+use_spherize: false
+spherize_fit_controls: true
+spherize_method: "ZCA-cor"
+
+use_pca: false
+pca_n_components: 64
+
+use_prune_correlated: true
+corr_thresh: 0.90
+
+use_filter_features: true
+
+agg_method: median
+
+tvn_efaar_epsilon: 0.5
+
+# === FIXED PARAMETERS ===
+skip_visualization: true
+
+# === HYDRA SWEEP ===
+# 2 x 2 x 2 x 2 = 16 configs
+hydra:
+  sweeper:
+    params:
+      # Batch correction: none vs tvn_efaar (essential for good PA)
+      batch_method: none,tvn_efaar
+
+      # Spherize: off vs ZCA-cor (can improve PC)
+      use_spherize: false,true
+
+      # Aggregation: median vs mean
+      agg_method: median,mean
+
+      # Correlation pruning threshold
+      corr_thresh: 0.85,0.95
+
+  launcher:
+    n_jobs: 4
+    prefer: processes
+    verbose: 1

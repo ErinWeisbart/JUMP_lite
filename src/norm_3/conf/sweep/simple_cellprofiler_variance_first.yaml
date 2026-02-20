@@ -1,0 +1,99 @@
+# @package _global_
+
+# CellProfiler + Embedding Sweep with Variance-First Pipeline Order
+# Pipeline order:
+#   1. NaN removal
+#   2. Low variance filtering (variance_threshold)
+#   3. Normalization (RobustMAD or Standardize - ALWAYS enabled)
+#   4. Outlier removal (BEFORE INT - ALWAYS enabled)
+#   5. Inverse Normal Transform (AFTER outlier removal - ALWAYS enabled)
+#   6. Correlation pruning (ALWAYS enabled)
+#   7. PCA (optional - 64 components or 95% variance)
+#   8. Batch correction (None, TVN_Original, TVN_EFAAR, Cascade_TVN, or Spherize)
+#
+# Testing:
+# - Normalization method (RobustMAD vs Standardize)
+# - PCA on/off (before batch correction)
+# - Batch correction (None vs TVN_Original vs TVN_EFAAR vs Cascade_TVN vs Spherize)
+#
+# Fixed parameters:
+# - Inverse Normal Transform: ALWAYS ON
+# - Outlier cutoff: 100 (always)
+# - Correlation pruning threshold: 0.9 (always)
+# - TVN Original k: 64
+# - Cascade TVN k1: 128, k2: 32
+# - Spherize: fit on all data, epsilon=1e-6 (ctrl+noPCA is degenerate)
+#
+# Note: NaN removal, low variance filtering, INT, outlier removal, and correlation pruning are ALWAYS enabled
+#
+# Total configs: 2 norm × 2 pca × 5 batch = 20 configs per dataset (800 total for 40 datasets)
+
+defaults:
+  - /preset/gpu_base_variance_first
+
+# Override output to separate folder
+output:
+  path: "data/features/variance_first_v4/output.parquet"
+  compression: zstd
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+skip_existing: true  # Skip already completed configs
+abort_on_invalid_features: true  # Variance filtering before norm should allow stricter validation
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70  # More conservative since variance filtering happens first
+
+# === DEFAULT VALUES ===
+batch_method: none  # No batch correction
+norm_method: robustmad
+
+use_wellcorr: false
+use_int: true
+use_sample_norm: false
+# NOTE: use_spherize is NOT set here - it will be controlled by batch_method sweep
+use_pca: true  # Enable PCA before batch correction (64 components or 95% variance)
+
+# Feature selection is ALWAYS enabled with FIXED parameters
+corr_thresh: 0.9
+outlier_cutoff: 100
+
+agg_method: median
+
+# Spherize parameters (fixed - ctrl+noPCA combos are numerically degenerate)
+spherize_epsilon: 1.0e-6  # Fixed epsilon
+spherize_fit_controls: false  # Fixed: fit on all data (ctrl without PCA is degenerate on 750+ features)
+
+# TVN Original / Cascade TVN k parameters
+tvn_original_k: 64  # Match PCA output dimensionality
+tvn_cascade_k1: 128  # First stage: broad whitening
+tvn_cascade_k2: 32   # Second stage: final dimensionality (was 10, destroyed signal)
+
+# === FIXED PARAMETERS ===
+skip_visualization: true
+
+# === HYDRA SWEEP ===
+# 2 norm × 2 pca × 5 batch = 20 configs per dataset
+hydra:
+  sweeper:
+    params:
+      # Normalization method: RobustMAD vs Standardize (ALWAYS one of these)
+      norm_method: robustmad,standardize
+
+      # PCA on/off (before batch correction)
+      use_pca: true,false
+
+      # Batch correction method: None vs TVN_Original vs TVN_EFAAR vs Cascade_TVN vs Spherize
+      batch_method: none,tvn_original,tvn_efaar,cascade_tvn,spherize
+
+      # Note: Spherize epsilon and fit_controls are FIXED (not swept)
+      # ctrl+noPCA is numerically degenerate on 750+ features
+      # Note: TVN k values are FIXED (not swept)
+      # Note: INT is ALWAYS enabled (not swept)
+      # Note: outlier_cutoff and corr_thresh are FIXED (not swept)
+
+  launcher:
+    n_jobs: 8  # Reduced to 8 to prevent GPU OOM on spherize configs
+    prefer: processes
+    verbose: 1

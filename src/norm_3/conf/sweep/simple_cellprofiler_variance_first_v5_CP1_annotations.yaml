@@ -1,0 +1,88 @@
+# @package _global_
+
+# Variance-First v5 CP1 Annotations Sweep
+# Identical to simple_cellprofiler_variance_first_v5 but using CPJUMP1 primary
+# target annotations (Chandrasekaran et al. 2024) instead of full target_list.
+#
+# Changes from v5:
+#   - metadata: jump_target2_4plate_full_metadata_with_primary_target.parquet
+#   - target_col: Metadata_primary_target (130 curated targets, 2 compounds each)
+#   - min_compounds_per_target: 2 (was 3)
+#
+# Pipeline order:
+#   1. NaN removal
+#   2. Low variance filtering (variance_threshold)
+#   3. Normalization (RobustMAD or Standardize - ALWAYS enabled)
+#   4. Outlier removal (BEFORE INT - ALWAYS enabled)
+#   5. Inverse Normal Transform (AFTER outlier removal - ALWAYS enabled)
+#   6. Correlation pruning (ALWAYS enabled)
+#   7. PCA (optional - 64 components or 95% variance)
+#   8. Batch correction (None, TVN_Original, TVN_EFAAR, Cascade_TVN, or Spherize)
+#
+# Fixed parameters:
+# - Inverse Normal Transform: ALWAYS ON
+# - Outlier cutoff: 100 (always)
+# - Correlation pruning threshold: 0.9 (always)
+# - TVN Original k: 64
+# - Cascade TVN k1: 128, k2: 32
+# - Spherize: fit on all data, epsilon=1e-6 (ctrl+noPCA is degenerate)
+#
+# Total configs: 2 norm × 2 pca × 5 batch = 20 configs per dataset
+
+defaults:
+  - /preset/gpu_base_variance_first_cp1
+
+# Override output to separate folder
+output:
+  path: "data/features/variance_first_v5_CP1_annotations/output.parquet"
+  compression: zstd
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+skip_existing: true  # Skip already completed configs
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70
+
+# === DEFAULT VALUES ===
+batch_method: none
+norm_method: robustmad
+
+use_wellcorr: false
+use_int: true
+use_sample_norm: false
+use_pca: true
+
+# Feature selection is ALWAYS enabled with FIXED parameters
+corr_thresh: 0.9
+outlier_cutoff: 100
+
+agg_method: median
+
+# Spherize parameters (fixed - ctrl+noPCA combos are numerically degenerate)
+spherize_epsilon: 1.0e-6
+spherize_fit_controls: false
+
+# TVN Original / Cascade TVN k parameters
+tvn_original_k: 64
+tvn_cascade_k1: 128
+tvn_cascade_k2: 32
+
+# === FIXED PARAMETERS ===
+skip_visualization: true
+
+# === HYDRA SWEEP ===
+# 2 norm × 2 pca × 5 batch = 20 configs per dataset
+hydra:
+  sweeper:
+    params:
+      norm_method: robustmad,standardize
+      use_pca: true,false
+      batch_method: none,tvn_original,tvn_efaar,cascade_tvn,spherize
+
+  launcher:
+    n_jobs: 8
+    prefer: processes
+    verbose: 1

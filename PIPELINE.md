@@ -166,3 +166,35 @@
 ### Input data
 - `analysis/feature_similarity/input/JUMP-Target-2_compound_metadata.tsv` — Compound metadata
 - `analysis/feature_similarity/input/JUMP-Target-2_compound_platemap.tsv` — Plate map metadata
+
+## Step 5: Normalization Pipeline (GPU)
+- **Script:** `src/norm_3/pipeline.py`
+- **Purpose:** GPU-accelerated normalization pipeline for Cell Painting morphological profiles. Runs an ordered sequence of configurable steps: clean NaNs, merge metadata, filter features, prune correlated, normalize (RobustMAD/standardize), batch correction (TVN/TVN_EFAAR), spherize, PCA, well position correction, inverse normal transform, aggregate wells, evaluate metrics.
+- **Input:** Raw feature parquets from Step 1c (extract_features)
+- **Output:** Normalized profiles parquet, `metrics.json` (PA, PC), pipeline config, per-compound/target CSVs
+- **Deps:** RAPIDS stack (`cupy`, `cuml`) via `pixi.toml`, plus polars, scipy, copairs, hydra, omegaconf, scikit-learn
+- **Config:** Hydra-based — `src/norm_3/conf/pipeline.yaml` (base), `conf/preset/` (per-model/compression), `conf/sweep/` (parameter search)
+- **Modules:** `core.py` (GPU transformers), `io.py` (data loading), `linalg.py` (GPU linear algebra), `utils.py` (GPU memory), `config.py` (dataclasses), `metrics.py` (PA/PC evaluation)
+- **Single run:**
+  ```
+  cd src/norm_3 && pixi run python pipeline.py +preset=gpu_base input_override=/path/to/raw_features.parquet
+  ```
+- **Sweep (Hydra multirun):**
+  ```
+  cd src/norm_3 && pixi run python pipeline.py --multirun +preset=gpu_base +sweep=focused_cp_v6 input_override=/path/to/raw_features.parquet
+  ```
+
+## Step 6: Sweep Results Aggregation
+- **Script:** `src/norm_3/gather_sweep_results.py`
+- **Input:** Sweep output directory from Step 5 (contains `metrics.json` files across all sweep configurations)
+- **Output:** `sweep_results.csv` (combined metrics), optional visualization plots (PA vs PC scatter, per-model bar charts)
+- **Args:**
+  - `--sweep-dir <path>` (required) Path to sweep output directory
+  - `--output <path>` Output CSV path (default: `sweep_results.csv` in sweep-dir)
+  - `--plot` Generate visualization plots
+  - `--plot-dir <path>` Directory for plots (default: sweep-dir/plots)
+  - `--filter-degenerate` Filter out degenerate configs (spherize + no PCA)
+  - `--best-metric balanced|nap_balanced` Metric for selecting best config
+  - `--exclude-families <name> [...]` Exclude model families from plots
+  - `--exclude-codecs <name> [...]` Exclude codecs from plots
+- **Run:** `nix develop . uv run python src/norm_3/gather_sweep_results.py --sweep-dir data/features/my_sweep --plot`

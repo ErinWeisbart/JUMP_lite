@@ -1,0 +1,97 @@
+# @package _global_
+
+# Optimized Embeddings Sweep for norm_3
+#
+# Based on best settings from comprehensive_optimal_extra:
+# - openphenom best: snorm_l2 + wellcorr + tvn_efaar + PCA-cor_ctrl (PA=37%, PC=15%)
+# - morphem best: snorm_l2 + std_all + wellcorr + PCA-cor (PA=33%, PC=19%)
+# - subcell best: wellcorr + tvn_efaar + PCA-cor_ctrl (PA=30%, PC=16%)
+#
+# Common patterns:
+# - wellcorr helps most models
+# - tvn_efaar is best batch correction
+# - PCA-cor_ctrl spherize helps PC
+# - snorm_l2 can help some models
+#
+# ~32 configs total
+#
+# === USAGE ===
+#   cd src/norm_3
+#   pixi run python -m norm_3.pipeline --multirun \
+#     +sweep=optimized_embeddings \
+#     input.path=/path/to/embeddings.parquet
+
+defaults:
+  - /preset/gpu_base
+
+# Override output to separate folder
+output:
+  path: "data/features/optimized_embeddings_sweep/output.parquet"
+  compression: zstd
+
+input_override: null
+
+# === VALIDATION SETTINGS ===
+skip_redundant_configs: true
+skip_existing: true
+abort_on_invalid_features: true
+abort_on_ill_conditioned_tvn: true
+max_pc1_variance: 0.70
+
+# === DEFAULT VALUES ===
+batch_method: tvn_efaar
+norm_method: robustmad
+norm_fit_controls: true
+
+use_wellcorr: true
+use_int: false
+use_sample_norm: false
+sample_norm_type: l2
+
+use_spherize: true
+spherize_fit_controls: true
+spherize_method: "PCA-cor"
+
+use_pca: false
+pca_n_components: 128
+
+use_filter_features: false
+use_prune_correlated: false
+corr_thresh: 0.90
+
+agg_method: mean
+
+tvn_efaar_epsilon: 0.5
+
+# === FIXED PARAMETERS ===
+skip_visualization: true
+
+# === HYDRA SWEEP ===
+# With spherize: 2 x 2 x 2 x 2 x 2 = 32 configs
+# Without spherize: 2 x 2 x 2 = 8 configs (redundant spherize params skipped)
+# Total unique: 40 configs per model
+hydra:
+  sweeper:
+    params:
+      # Batch correction: tvn_efaar (best) vs none
+      batch_method: tvn_efaar,none
+
+      # Well position correction: on vs off
+      use_wellcorr: true,false
+
+      # Sample normalization: on vs off
+      use_sample_norm: false,true
+
+      # Spherize: on vs off
+      use_spherize: true,false
+
+      # Spherize method: PCA-cor vs ZCA-cor
+      spherize_method: PCA-cor,ZCA-cor
+
+      # Spherize fit on controls
+      spherize_fit_controls: true,false
+
+  launcher:
+    n_jobs: 4
+    prefer: processes
+    verbose: 1
