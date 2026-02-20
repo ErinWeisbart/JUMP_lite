@@ -97,6 +97,23 @@
 - **Note:** Imports `scripts/map_cellprofiler_features.py:FeatureMapper` via sys.path manipulation
 - **Run:** `nix develop . uv run python analysis/feature_similarity/correlate_vs_raw_cp.py`
 
+- **Script:** `analysis/feature_similarity/compare_codec_features.py`
+- **Input:** Instance mapping parquets from Step 3 (`--save-mappings`) + per-cell feature profiles from aliby_output
+- **Output:** Per-cell and per-site feature correlation plots/CSVs across codecs, feature ranking
+- **Args:**
+  - `--mappings-dir <path>` (required) Directory with instance mapping parquet files
+  - `--features-base <path>` Base path for feature profiles (default: `/work/datasets/aliby_output/cp_measure/jump_target2_4plate`)
+  - `--gt-codec <name>` Ground truth codec (default: `zstd.zarr`)
+  - `--codecs <name> [...]` Codecs to compare (default: jpegxl variants)
+  - `--object-type cell|nuclei` (default: `cell`)
+  - `--site-level` Also run site-level analysis (median of matched cells per site)
+  - `--n-samples <N>` Number of random source_ids to sample (default: 5)
+  - `--features <name> [...]` / `--feature-pattern <regex>` Filter specific features
+  - `--list-features` List available features and exit
+  - `--min-cells <N>` Minimum GT cell count per site (default: 5)
+  - `--filter-percentile <N>` Filter outlier sites by cell count percentile
+- **Run:** `nix develop . uv run python analysis/feature_similarity/compare_codec_features.py --mappings-dir output/instance_mappings --site-level`
+
 ### Input data
 - `analysis/feature_similarity/input/JUMP-Target-2_compound_metadata.tsv` — Compound metadata
 - `analysis/feature_similarity/input/JUMP-Target-2_compound_platemap.tsv` — Plate map metadata
