@@ -81,3 +81,22 @@
 
 - **Script:** `analysis/segmentation/test_viewer_simple.py`
 - **Purpose:** Simple Panel viewer test for debugging the dashboard setup.
+
+## Step 4: Feature Similarity Analysis
+- **Script:** `analysis/feature_similarity/feature_correlation_cp_measure_script.py`
+- **Input:** Feature profiles from aliby_output (per compression), compound metadata from `input/JUMP-Target-2_compound_metadata.tsv`
+- **Output:** Correlation heatmaps, violin plots, parquet correlation results
+- **Config:** Paths to aliby_output workspace and cache directory are set within the script
+- **Utility:** `analysis/feature_similarity/utils_cp_measure_name_mapping.py` — Maps between CP measure naming conventions (imported by main script)
+- **Run:** `nix develop . uv run python analysis/feature_similarity/feature_correlation_cp_measure_script.py`
+
+- **Script:** `analysis/feature_similarity/correlate_vs_raw_cp.py`
+- **Input:** Raw CellProfiler profiles + normalized features from the pipeline (filtered and non-filtered)
+- **Output:** Spearman/Pearson correlation scatter plots, violin plots, bar charts per feature category
+- **Config:** Hardcoded paths to raw CP profiles, filtered/non-filtered feature directories, and output directory — edit `RAW_CP_PATH`, `FILTERED_DIR`, `NONFILTERED_DIR`, `OUTPUT_DIR` in the script
+- **Note:** Imports `scripts/map_cellprofiler_features.py:FeatureMapper` via sys.path manipulation
+- **Run:** `nix develop . uv run python analysis/feature_similarity/correlate_vs_raw_cp.py`
+
+### Input data
+- `analysis/feature_similarity/input/JUMP-Target-2_compound_metadata.tsv` — Compound metadata
+- `analysis/feature_similarity/input/JUMP-Target-2_compound_platemap.tsv` — Plate map metadata
