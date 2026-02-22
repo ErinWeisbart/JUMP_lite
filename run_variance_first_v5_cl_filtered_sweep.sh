@@ -32,7 +32,7 @@ echo ""
 cleanup_gpu() {
     echo "  Cleaning up GPU memory..."
     cd src/norm_3
-    pixi run python -c "import cupy as cp; cp.get_default_memory_pool().free_all_blocks(); cp.cuda.Stream.null.synchronize(); print('    GPU memory cleaned')" 2>&1 || echo "  GPU cleanup skipped"
+    pixi run python -c "import cupy as cp; cp.get_default_memory_pool().free_all_blocks(); cp.cuda.Stream.null.synchronize()" 2>&1 || echo "  GPU cleanup skipped"
     cd ../..
     sleep 2
     echo "  Cleanup complete"
