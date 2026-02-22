@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+pixi.lock
+
+# Nix
+.direnv/
+.envrc
+.nix-cache/
+
+# Project-specific data
+images/
+*.tif
+*.tiff
+*.zarr/
+results/
+work/
+data/
+outputs/
+output/
+tmp/
+*.log
+*.csv
+
+# Analysis outputs
+analysis/feature_similarity/output/
+analysis/compression_exploration/*.png
+analysis/compression_exploration/full_res/
+analysis/compression_exploration/presets/
+analysis/compression_exploration/presets_pernorm/
+analysis/compression_exploration/presets_tif/
+analysis/image_quality/uv.lock
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+JUMP_core.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
