@@ -101,7 +101,7 @@ steps:
   - name: normalize_pca
     enabled: true
     params:
-      n_components: 64  # Max components (will use fewer if 95% variance reached earlier)
+      n_components: 256  # Max components (will use fewer if 95% variance reached earlier)
       variance_threshold: 0.95  # Stop at 95% explained variance
       whiten: false
       fit_on_controls: false
@@ -120,7 +120,7 @@ steps:
       method: "ZCA-cor"
       batch_col: "Metadata_Plate"  # Per-batch spherize to preserve biological signal
       fit_on_controls: false
-      epsilon: 1.0e-6
+      epsilon: 0.5
 
   # Other batch correction methods (not used in this sweep)
   - name: normalize_tvn

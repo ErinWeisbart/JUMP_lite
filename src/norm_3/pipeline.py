@@ -735,10 +735,13 @@ def normalize_tvn_original(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     control_col = config.get("control_col", "Metadata_control_type")
     control_key = config.get("control_key", "negcon")
     # Use adaptive k: match input feature count (works with or without PCA)
-    k = config.get("k", min(50, len(features)))
+    k_requested = config.get("k", min(50, len(features)))
+    k = min(k_requested, len(features))
     epsilon = config.get("epsilon", 1e-8)
 
-    print(f"  k={k} (adaptive from {len(features)} features), batch_col={batch_col}, epsilon={epsilon}")
+    if k < k_requested:
+        print(f"  k clamped: {k_requested} -> {k} (only {len(features)} input features)")
+    print(f"  k={k}, n_features={len(features)}, batch_col={batch_col}, epsilon={epsilon}")
 
     with GPUMemoryManager() as gpu:
         X_all = gpu.transfer(df.select(features).to_numpy())
@@ -1322,6 +1325,9 @@ def apply_sweep_overrides(config: dict) -> dict:
                 step["params"]["epsilon"] = config["spherize_epsilon"]
             if "spherize_fit_controls" in config:
                 step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
+            # Force fit on all data when PCA is off (too few controls for high-dim covariance)
+            if not config.get("use_pca", False):
+                step["params"]["fit_on_controls"] = False
 
         elif step_name == "normalize_pca":
             if "pca_n_components" in config:
@@ -1390,11 +1396,11 @@ def is_redundant_config(config: dict) -> tuple[bool, str | None]:
             return True, f"use_spherize=false ignores spherize_method={spherize_method}"
 
     # When batch_method != "spherize", spherize epsilon and fit_controls params don't matter
-    # Use 1e-6 and False as canonical defaults (from variance_first sweep)
+    # Accept both 1e-6 and 0.5 as canonical defaults (different sweep versions)
     if batch_method != "spherize":
-        spherize_epsilon = config.get("spherize_epsilon", 1.0e-6)
+        spherize_epsilon = config.get("spherize_epsilon", 0.5)
         spherize_fit_controls = config.get("spherize_fit_controls", False)
-        if abs(spherize_epsilon - 1.0e-6) > 1e-10:  # Floating point comparison
+        if spherize_epsilon not in (1.0e-6, 0.5) and abs(spherize_epsilon - 1.0e-6) > 1e-10 and abs(spherize_epsilon - 0.5) > 1e-10:
             return True, f"batch_method={batch_method} ignores spherize_epsilon={spherize_epsilon}"
         if spherize_fit_controls != False:
             return True, f"batch_method={batch_method} ignores spherize_fit_controls={spherize_fit_controls}"
@@ -1484,8 +1490,10 @@ def run_pipeline(
         print("Run with: pixi run python -m norm_3.pipeline ...")
         return float("inf")
 
-    print_gpu_info()
-    print()
+    if not getattr(run_pipeline, "_gpu_info_printed", False):
+        print_gpu_info()
+        print()
+        run_pipeline._gpu_info_printed = True
 
     # Load config
     if hydra_config is not None:
@@ -1651,12 +1659,29 @@ try:
 
         # Check for redundant config BEFORE any heavy operations (no GPU init, no data loading)
         config = OmegaConf.to_container(cfg, resolve=True)
+        config = apply_sweep_overrides(config)
         if config.get("skip_redundant_configs", True):
             is_redundant, reason = is_redundant_config(config)
             if is_redundant:
                 # Fast skip - no imports, no GPU, no data
                 print(f"[SKIP] {reason}")
                 return float("inf")
+
+        # Check skip_existing BEFORE heavy imports (GPU, cupy, data loading)
+        if config.get("skip_existing", True):
+            input_override = cfg.get("input_override", None)
+            if input_override:
+                input_path = Path(input_override)
+            elif config.get("input_override"):
+                input_path = Path(config["input_override"])
+            else:
+                input_path = Path(config["input"]["path"])
+            output_name = generate_output_name(config)
+            base_output_path = Path(config["output"]["path"])
+            metrics_path = base_output_path.parent / input_path.stem / output_name / "results" / "metrics.json"
+            if metrics_path.exists():
+                print(f"[SKIP] Already completed: {output_name}")
+                return 0.0
 
         print(f"[{time.strftime('%H:%M:%S')}] norm_3 GPU Pipeline starting...")
         input_override = cfg.get("input_override", None)

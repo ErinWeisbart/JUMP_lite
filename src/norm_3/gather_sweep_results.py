@@ -7,7 +7,7 @@ Designed for the norm_3 variance-first pipeline config naming convention:
 Batch methods:
   - none (no suffix)
   - tvn_original_k{k}
-  - tvn_efaar_e{epsilon}
+  - tvn_efaar_e{epsilon}[_c{n_components}]  (c suffix only when != 128)
   - cascade_tvn_k{k1}_k{k2}
   - ZCA-cor_{fit}_{epsilon}  (spherize)
 
@@ -105,14 +105,101 @@ COMPRESSION_DISPLAY = {
     "openphenom_jpegxl_lossy_d10_raw": "ophenom_cl_d10",
     "openphenom_jpegxl_lossy_d15_raw": "ophenom_cl_d15",
     "openphenom_jpegxl_lossy_d20_e2_raw": "ophenom_cl_d20_e2",
-    # DINOv2-random d15
+    # DINOv2-random d15/d20_e2/d30
     "dinov2_random_jpegxl_lossy_d15_raw": "dv2_rand_d15",
-    # SubCell d15/d20_e2
+    "dinov2_random_jpegxl_lossy_d20_e2_raw": "dv2_rand_d20_e2",
+    "dinov2_random_jpegxl_lossy_d30_raw": "dv2_rand_d30",
+    # SubCell d15/d20_e2/d30
     "subcell_jpegxl_lossy_d15_raw": "subcell_d15",
     "subcell_jpegxl_lossy_d20_e2_raw": "subcell_d20_e2",
-    # DINOv2-CL d15/d20_e2
+    "subcell_jpegxl_lossy_d30_raw": "subcell_d30",
+    # MorphEm d30
+    "morphem_jpegxl_lossy_d30_raw": "morphem_d30",
+    # OpenPhenom d30
+    "openphenom_jpegxl_lossy_d30_raw": "ophenom_cl_d30",
+    # DINOv2 non-random (from jump_target2_4plate_cl)
+    "dinov2_jpegxl_lossy_d2_e8_raw": "dv2_d2_e8",
+    "dinov2_jpegxl_lossy_d10_raw": "dv2_d10",
+    "dinov2_jpegxl_lossy_d15_raw": "dv2_d15",
+    "dinov2_jpegxl_lossy_d20_e2_raw": "dv2_d20_e2",
+    "dinov2_jpegxl_lossy_d30_raw": "dv2_d30",
+    "dinov2_jpegxl_lossy_mq_new_raw": "dv2_mq_new",
+    # mq_new codec variants
+    "dinov2_random_jpegxl_lossy_mq_new_raw": "dv2_rand_mq_new",
+    "morphem_jpegxl_lossy_mq_new_raw": "morphem_mq_new",
+    "subcell_jpegxl_lossy_mq_new_raw": "subcell_mq_new",
+    "openphenom_jpegxl_lossy_mq_new_raw": "ophenom_cl_mq_new",
+    # === Rerun families (from jump_target2_4plate_cl_rerun/) ===
+    # DINOv2 rerun
+    "dinov2_cl_zstd_rr_raw": "dv2_rr_zstd",
+    "dinov2_cl_jpegxl_lossy_hq_rr_raw": "dv2_rr_hq",
+    "dinov2_cl_jpegxl_lossy_effort_3_rr_raw": "dv2_rr_e3",
+    "dinov2_cl_jpegxl_lossy_mq_rr_raw": "dv2_rr_mq",
+    "dinov2_cl_jpegxl_lossy_mq_new_rr_raw": "dv2_rr_mq_new",
+    "dinov2_cl_jpegxl_lossy_lq_rr_raw": "dv2_rr_lq",
+    "dinov2_cl_jpegxl_lossy_d2_e8_rr_raw": "dv2_rr_d2_e8",
+    "dinov2_cl_jpegxl_lossy_d10_rr_raw": "dv2_rr_d10",
+    "dinov2_cl_jpegxl_lossy_d15_rr_raw": "dv2_rr_d15",
+    "dinov2_cl_jpegxl_lossy_d20_e2_rr_raw": "dv2_rr_d20_e2",
+    "dinov2_cl_jpegxl_lossy_d30_rr_raw": "dv2_rr_d30",
+    "dinov2_cl_jpegxl_lossy_d50_rr_raw": "dv2_rr_d50",
+    # DINOv2-random rerun
+    "dinov2_random_zstd_rr_raw": "dv2_rand_rr_zstd",
+    "dinov2_random_jpegxl_lossy_hq_rr_raw": "dv2_rand_rr_hq",
+    "dinov2_random_jpegxl_lossy_effort_3_rr_raw": "dv2_rand_rr_e3",
+    "dinov2_random_jpegxl_lossy_mq_rr_raw": "dv2_rand_rr_mq",
+    "dinov2_random_jpegxl_lossy_mq_new_rr_raw": "dv2_rand_rr_mq_new",
+    "dinov2_random_jpegxl_lossy_lq_rr_raw": "dv2_rand_rr_lq",
+    "dinov2_random_jpegxl_lossy_d2_e8_rr_raw": "dv2_rand_rr_d2_e8",
+    "dinov2_random_jpegxl_lossy_d10_rr_raw": "dv2_rand_rr_d10",
+    "dinov2_random_jpegxl_lossy_d15_rr_raw": "dv2_rand_rr_d15",
+    "dinov2_random_jpegxl_lossy_d20_e2_rr_raw": "dv2_rand_rr_d20_e2",
+    "dinov2_random_jpegxl_lossy_d30_rr_raw": "dv2_rand_rr_d30",
+    "dinov2_random_jpegxl_lossy_d50_rr_raw": "dv2_rand_rr_d50",
+    # MorphEm rerun
+    "morphem_zstd_rr_raw": "morphem_rr_zstd",
+    "morphem_jpegxl_lossy_hq_rr_raw": "morphem_rr_hq",
+    "morphem_jpegxl_lossy_effort_3_rr_raw": "morphem_rr_e3",
+    "morphem_jpegxl_lossy_mq_rr_raw": "morphem_rr_mq",
+    "morphem_jpegxl_lossy_mq_new_rr_raw": "morphem_rr_mq_new",
+    "morphem_jpegxl_lossy_lq_rr_raw": "morphem_rr_lq",
+    "morphem_jpegxl_lossy_d2_e8_rr_raw": "morphem_rr_d2_e8",
+    "morphem_jpegxl_lossy_d10_rr_raw": "morphem_rr_d10",
+    "morphem_jpegxl_lossy_d15_rr_raw": "morphem_rr_d15",
+    "morphem_jpegxl_lossy_d20_e2_rr_raw": "morphem_rr_d20_e2",
+    "morphem_jpegxl_lossy_d30_rr_raw": "morphem_rr_d30",
+    "morphem_jpegxl_lossy_d50_rr_raw": "morphem_rr_d50",
+    # SubCell rerun
+    "subcell_zstd_rr_raw": "subcell_rr_zstd",
+    "subcell_jpegxl_lossy_hq_rr_raw": "subcell_rr_hq",
+    "subcell_jpegxl_lossy_effort_3_rr_raw": "subcell_rr_e3",
+    "subcell_jpegxl_lossy_mq_rr_raw": "subcell_rr_mq",
+    "subcell_jpegxl_lossy_mq_new_rr_raw": "subcell_rr_mq_new",
+    "subcell_jpegxl_lossy_lq_rr_raw": "subcell_rr_lq",
+    "subcell_jpegxl_lossy_d2_e8_rr_raw": "subcell_rr_d2_e8",
+    "subcell_jpegxl_lossy_d10_rr_raw": "subcell_rr_d10",
+    "subcell_jpegxl_lossy_d15_rr_raw": "subcell_rr_d15",
+    "subcell_jpegxl_lossy_d20_e2_rr_raw": "subcell_rr_d20_e2",
+    "subcell_jpegxl_lossy_d30_rr_raw": "subcell_rr_d30",
+    "subcell_jpegxl_lossy_d50_rr_raw": "subcell_rr_d50",
+    # OpenPhenom rerun
+    "openphenom_zstd_rr_raw": "ophenom_rr_zstd",
+    "openphenom_jpegxl_lossy_hq_rr_raw": "ophenom_rr_hq",
+    "openphenom_jpegxl_lossy_effort_3_rr_raw": "ophenom_rr_e3",
+    "openphenom_jpegxl_lossy_mq_rr_raw": "ophenom_rr_mq",
+    "openphenom_jpegxl_lossy_mq_new_rr_raw": "ophenom_rr_mq_new",
+    "openphenom_jpegxl_lossy_lq_rr_raw": "ophenom_rr_lq",
+    "openphenom_jpegxl_lossy_d2_e8_rr_raw": "ophenom_rr_d2_e8",
+    "openphenom_jpegxl_lossy_d10_rr_raw": "ophenom_rr_d10",
+    "openphenom_jpegxl_lossy_d15_rr_raw": "ophenom_rr_d15",
+    "openphenom_jpegxl_lossy_d20_e2_rr_raw": "ophenom_rr_d20_e2",
+    "openphenom_jpegxl_lossy_d30_rr_raw": "ophenom_rr_d30",
+    "openphenom_jpegxl_lossy_d50_rr_raw": "ophenom_rr_d50",
+    # DINOv2-CL d15/d20_e2/d30/mq_new
     "dinov2_cl_jpegxl_lossy_d15_raw": "dv2_cl_d15",
     "dinov2_cl_jpegxl_lossy_d20_e2_raw": "dv2_cl_d20_e2",
+    "dinov2_cl_jpegxl_lossy_d30_raw": "dv2_cl_d30",
+    "dinov2_cl_jpegxl_lossy_mq_new_raw": "dv2_cl_mq_new",
 }
 
 # Order for compression codecs (raw first, then filtered, by quality, then embedding models)
@@ -124,11 +211,14 @@ _CODEC_SORT_ORDER = {
     "jpegxl_lossy_hq": 2,
     "jpegxl_lossy_effort_3": 3,
     "jpegxl_lossy_d2_e8": 4,
-    "jpegxl_lossy_mq": 5,
-    "jpegxl_lossy_lq": 6,
-    "jpegxl_lossy_d10": 7,
-    "jpegxl_lossy_d15": 8,
-    "jpegxl_lossy_d20_e2": 9,
+    "jpegxl_lossy_mq_new": 5,
+    "jpegxl_lossy_mq": 6,
+    "jpegxl_lossy_lq": 7,
+    "jpegxl_lossy_d10": 8,
+    "jpegxl_lossy_d15": 9,
+    "jpegxl_lossy_d20_e2": 10,
+    "jpegxl_lossy_d30": 11,
+    "jpegxl_lossy_d50": 12,
 }
 
 
@@ -183,24 +273,35 @@ MODEL_FAMILIES = {
     "dinov2_random": [
         "dinov2_random_zstd_raw", "dinov2_random_jpegxl_lossy_hq_raw",
         "dinov2_random_jpegxl_lossy_effort_3_raw", "dinov2_random_jpegxl_lossy_d2_e8_raw",
-        "dinov2_random_jpegxl_lossy_mq_raw", "dinov2_random_jpegxl_lossy_lq_raw",
+        "dinov2_random_jpegxl_lossy_mq_new_raw", "dinov2_random_jpegxl_lossy_mq_raw",
+        "dinov2_random_jpegxl_lossy_lq_raw",
         "dinov2_random_jpegxl_lossy_d10_raw", "dinov2_random_jpegxl_lossy_d15_raw",
+        "dinov2_random_jpegxl_lossy_d20_e2_raw", "dinov2_random_jpegxl_lossy_d30_raw",
+    ],
+    # DINOv2 non-random (from jump_target2_4plate_cl)
+    "dinov2": [
+        "dinov2_jpegxl_lossy_d2_e8_raw", "dinov2_jpegxl_lossy_mq_new_raw",
+        "dinov2_jpegxl_lossy_d10_raw",
+        "dinov2_jpegxl_lossy_d15_raw", "dinov2_jpegxl_lossy_d20_e2_raw",
+        "dinov2_jpegxl_lossy_d30_raw",
     ],
     # MorphEm
     "morphem": [
         "morphem_zstd_raw", "morphem_jpegxl_lossy_hq_raw",
         "morphem_jpegxl_lossy_effort_3_raw", "morphem_jpegxl_lossy_d2_e8_raw",
-        "morphem_jpegxl_lossy_mq_raw", "morphem_jpegxl_lossy_lq_raw",
+        "morphem_jpegxl_lossy_mq_new_raw", "morphem_jpegxl_lossy_mq_raw",
+        "morphem_jpegxl_lossy_lq_raw",
         "morphem_jpegxl_lossy_d10_raw", "morphem_jpegxl_lossy_d15_raw",
-        "morphem_jpegxl_lossy_d20_e2_raw",
+        "morphem_jpegxl_lossy_d20_e2_raw", "morphem_jpegxl_lossy_d30_raw",
     ],
     # SubCell
     "subcell": [
         "subcell_zstd_raw", "subcell_jpegxl_lossy_hq_raw",
         "subcell_jpegxl_lossy_effort_3_raw", "subcell_jpegxl_lossy_d2_e8_raw",
-        "subcell_jpegxl_lossy_mq_raw", "subcell_jpegxl_lossy_lq_raw",
+        "subcell_jpegxl_lossy_mq_new_raw", "subcell_jpegxl_lossy_mq_raw",
+        "subcell_jpegxl_lossy_lq_raw",
         "subcell_jpegxl_lossy_d10_raw", "subcell_jpegxl_lossy_d15_raw",
-        "subcell_jpegxl_lossy_d20_e2_raw",
+        "subcell_jpegxl_lossy_d20_e2_raw", "subcell_jpegxl_lossy_d30_raw",
     ],
     # OpenPhenom-8bit (from output/)
     "openphenom_8bit": [
@@ -212,9 +313,51 @@ MODEL_FAMILIES = {
     "openphenom": [
         "openphenom_zstd_raw", "openphenom_jpegxl_lossy_hq_raw",
         "openphenom_jpegxl_lossy_effort_3_raw", "openphenom_jpegxl_lossy_d2_e8_raw",
-        "openphenom_jpegxl_lossy_mq_raw", "openphenom_jpegxl_lossy_lq_raw",
+        "openphenom_jpegxl_lossy_mq_new_raw", "openphenom_jpegxl_lossy_mq_raw",
+        "openphenom_jpegxl_lossy_lq_raw",
         "openphenom_jpegxl_lossy_d10_raw", "openphenom_jpegxl_lossy_d15_raw",
-        "openphenom_jpegxl_lossy_d20_e2_raw",
+        "openphenom_jpegxl_lossy_d20_e2_raw", "openphenom_jpegxl_lossy_d30_raw",
+    ],
+    # === Rerun families (from jump_target2_4plate_cl_rerun/) ===
+    "dinov2_rr": [
+        "dinov2_cl_zstd_rr_raw", "dinov2_cl_jpegxl_lossy_hq_rr_raw",
+        "dinov2_cl_jpegxl_lossy_effort_3_rr_raw", "dinov2_cl_jpegxl_lossy_mq_rr_raw",
+        "dinov2_cl_jpegxl_lossy_mq_new_rr_raw", "dinov2_cl_jpegxl_lossy_lq_rr_raw",
+        "dinov2_cl_jpegxl_lossy_d2_e8_rr_raw", "dinov2_cl_jpegxl_lossy_d10_rr_raw",
+        "dinov2_cl_jpegxl_lossy_d15_rr_raw", "dinov2_cl_jpegxl_lossy_d20_e2_rr_raw",
+        "dinov2_cl_jpegxl_lossy_d30_rr_raw", "dinov2_cl_jpegxl_lossy_d50_rr_raw",
+    ],
+    "dinov2_random_rr": [
+        "dinov2_random_zstd_rr_raw", "dinov2_random_jpegxl_lossy_hq_rr_raw",
+        "dinov2_random_jpegxl_lossy_effort_3_rr_raw", "dinov2_random_jpegxl_lossy_mq_rr_raw",
+        "dinov2_random_jpegxl_lossy_mq_new_rr_raw", "dinov2_random_jpegxl_lossy_lq_rr_raw",
+        "dinov2_random_jpegxl_lossy_d2_e8_rr_raw", "dinov2_random_jpegxl_lossy_d10_rr_raw",
+        "dinov2_random_jpegxl_lossy_d15_rr_raw", "dinov2_random_jpegxl_lossy_d20_e2_rr_raw",
+        "dinov2_random_jpegxl_lossy_d30_rr_raw", "dinov2_random_jpegxl_lossy_d50_rr_raw",
+    ],
+    "morphem_rr": [
+        "morphem_zstd_rr_raw", "morphem_jpegxl_lossy_hq_rr_raw",
+        "morphem_jpegxl_lossy_effort_3_rr_raw", "morphem_jpegxl_lossy_mq_rr_raw",
+        "morphem_jpegxl_lossy_mq_new_rr_raw", "morphem_jpegxl_lossy_lq_rr_raw",
+        "morphem_jpegxl_lossy_d2_e8_rr_raw", "morphem_jpegxl_lossy_d10_rr_raw",
+        "morphem_jpegxl_lossy_d15_rr_raw", "morphem_jpegxl_lossy_d20_e2_rr_raw",
+        "morphem_jpegxl_lossy_d30_rr_raw", "morphem_jpegxl_lossy_d50_rr_raw",
+    ],
+    "subcell_rr": [
+        "subcell_zstd_rr_raw", "subcell_jpegxl_lossy_hq_rr_raw",
+        "subcell_jpegxl_lossy_effort_3_rr_raw", "subcell_jpegxl_lossy_mq_rr_raw",
+        "subcell_jpegxl_lossy_mq_new_rr_raw", "subcell_jpegxl_lossy_lq_rr_raw",
+        "subcell_jpegxl_lossy_d2_e8_rr_raw", "subcell_jpegxl_lossy_d10_rr_raw",
+        "subcell_jpegxl_lossy_d15_rr_raw", "subcell_jpegxl_lossy_d20_e2_rr_raw",
+        "subcell_jpegxl_lossy_d30_rr_raw", "subcell_jpegxl_lossy_d50_rr_raw",
+    ],
+    "openphenom_rr": [
+        "openphenom_zstd_rr_raw", "openphenom_jpegxl_lossy_hq_rr_raw",
+        "openphenom_jpegxl_lossy_effort_3_rr_raw", "openphenom_jpegxl_lossy_mq_rr_raw",
+        "openphenom_jpegxl_lossy_mq_new_rr_raw", "openphenom_jpegxl_lossy_lq_rr_raw",
+        "openphenom_jpegxl_lossy_d2_e8_rr_raw", "openphenom_jpegxl_lossy_d10_rr_raw",
+        "openphenom_jpegxl_lossy_d15_rr_raw", "openphenom_jpegxl_lossy_d20_e2_rr_raw",
+        "openphenom_jpegxl_lossy_d30_rr_raw", "openphenom_jpegxl_lossy_d50_rr_raw",
     ],
     # CellProfiler filtered_border_size (from jump_target2_4plate_filtered)
     "cp_measure_fbs": [
@@ -229,9 +372,11 @@ MODEL_FAMILIES = {
     # DINOv2-CL (from jump_target2_4plate_cl)
     "dinov2_cl": [
         "dinov2_cl_jpegxl_lossy_d2_e8_raw",
+        "dinov2_cl_jpegxl_lossy_mq_new_raw",
         "dinov2_cl_jpegxl_lossy_d10_raw",
         "dinov2_cl_jpegxl_lossy_d15_raw",
         "dinov2_cl_jpegxl_lossy_d20_e2_raw",
+        "dinov2_cl_jpegxl_lossy_d30_raw",
     ],
 }
 
@@ -241,6 +386,7 @@ FAMILY_HUES = {
     "cp_measure": 0.07,        # Orange-red
     "cp_measure_fbs": 0.10,    # Yellow-orange
     "cp_measure_filtered": 0.14,  # Orange
+    "dinov2": 0.27,            # Yellow-green
     "dinov2_490": 0.30,        # Green
     "dinov2_cl": 0.37,         # Green-teal
     "dinov2_random": 0.45,     # Teal
@@ -248,6 +394,12 @@ FAMILY_HUES = {
     "subcell": 0.68,           # Blue-purple
     "openphenom_8bit": 0.78,   # Purple
     "openphenom": 0.85,        # Magenta
+    # Rerun families (shifted hues to distinguish from originals)
+    "dinov2_rr": 0.24,         # Yellow-green (near dinov2)
+    "dinov2_random_rr": 0.42,  # Teal (near dinov2_random)
+    "morphem_rr": 0.55,        # Cyan (near morphem)
+    "subcell_rr": 0.65,        # Blue (near subcell)
+    "openphenom_rr": 0.92,     # Pink-magenta (near openphenom)
 }
 
 
@@ -376,6 +528,7 @@ def parse_config_name(config_name: str) -> dict:
         "spherize_epsilon": None,
         "tvn_epsilon": None,
         "tvn_original_k": None,
+        "tvn_efaar_n_components": None,
         "tvn_cascade_k1": None,
         "tvn_cascade_k2": None,
     }
@@ -422,12 +575,19 @@ def parse_config_name(config_name: str) -> dict:
                 settings["tvn_original_k"] = int(k_match.group(1))
         elif part.startswith("tvn_efaar"):
             settings["batch_method"] = "tvn_efaar"
-            # Extract epsilon: tvn_efaar_e0.5 -> 0.5
-            if "_e" in part:
+            # Extract epsilon and optional n_components:
+            #   tvn_efaar_e0.5       -> epsilon=0.5, n_components=128 (default)
+            #   tvn_efaar_e0.5_c256  -> epsilon=0.5, n_components=256
+            efaar_match = re.search(r"_e([\d.]+)(?:_c(\d+))?$", part)
+            if efaar_match:
                 try:
-                    settings["tvn_epsilon"] = float(part.split("_e")[-1])
+                    settings["tvn_epsilon"] = float(efaar_match.group(1))
                 except ValueError:
                     pass
+                if efaar_match.group(2):
+                    settings["tvn_efaar_n_components"] = int(efaar_match.group(2))
+                else:
+                    settings["tvn_efaar_n_components"] = 128
         elif part.startswith("cascade_tvn"):
             settings["batch_method"] = "cascade_tvn"
             # Extract k1, k2: cascade_tvn_k128_k32 -> k1=128, k2=32
@@ -589,7 +749,8 @@ def generate_all_metrics_plot(df: pl.DataFrame, output_dir: Path, model_colors: 
     n_cols = min(4, n_metrics)
     n_rows = (n_metrics + n_cols - 1) // n_cols
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(8 * n_cols, 6 * n_rows))
+    col_width = max(8, n_models * 0.5)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(col_width * n_cols, 6 * n_rows))
     if n_metrics == 1:
         axes = np.array([axes])
     axes = axes.flatten()
@@ -938,11 +1099,14 @@ COMPRESSION_LEVEL = {
     "hq": 2,        # light lossy
     "effort_3": 3,  # moderate lossy
     "d2_e8": 4,     # distance 2 effort 8
-    "mq": 5,        # medium quality
-    "lq": 6,        # low quality (heavy lossy)
-    "d10": 7,       # distance 10
-    "d15": 8,       # distance 15
-    "d20_e2": 9,    # distance 20 effort 2 (most lossy)
+    "mq_new": 5,    # medium quality (new settings)
+    "mq": 6,        # medium quality
+    "lq": 7,        # low quality (heavy lossy)
+    "d10": 8,       # distance 10
+    "d15": 9,       # distance 15
+    "d20_e2": 10,   # distance 20 effort 2
+    "d30": 11,      # distance 30
+    "d50": 12,      # distance 50 (most lossy)
 }
 
 # Short codec aliases that map to canonical COMPRESSION_LEVEL keys
@@ -957,6 +1121,9 @@ _CODEC_ALIASES = {
     "d15": "d15",
     "d20_e2": "d20_e2",
     "d2_e8": "d2_e8",
+    "mq_new": "mq_new",
+    "d30": "d30",
+    "d50": "d50",
     "raw": "raw",
 }
 
@@ -964,7 +1131,15 @@ _CODEC_ALIASES = {
 _DISPLAY_TO_LEVEL = {}
 for _raw_name, _disp in COMPRESSION_DISPLAY.items():
     # Extract base codec from display name (strip model prefix like dv2_490_, morphem_, etc.)
-    for _prefix in ["dv2_490_", "dv2_rand_", "dv2_cl_", "morphem_", "subcell_", "ophenom_cl_", "ophenom_", "cp_fbs_"]:
+    for _prefix in [
+        "dv2_490_",
+        "dv2_rand_rr_", "dv2_rand_",       # rr before non-rr
+        "dv2_rr_", "dv2_cl_", "dv2_",      # rr before cl before bare dv2
+        "morphem_rr_", "morphem_",
+        "subcell_rr_", "subcell_",
+        "ophenom_rr_", "ophenom_cl_", "ophenom_",
+        "cp_fbs_",
+    ]:
         if _disp.startswith(_prefix):
             _codec = _disp[len(_prefix):]
             _canonical = _CODEC_ALIASES.get(_codec, _codec)
@@ -1137,6 +1312,11 @@ FAMILY_DISPLAY = {
     "subcell": "SubCell",
     "openphenom_8bit": "OpenPhenom-8bit",
     "openphenom": "OpenPhenom",
+    "dinov2_rr": "DINOv2-RR",
+    "dinov2_random_rr": "DINOv2-random-RR",
+    "morphem_rr": "MorphEm-RR",
+    "subcell_rr": "SubCell-RR",
+    "openphenom_rr": "OpenPhenom-RR",
 }
 
 
@@ -1619,6 +1799,13 @@ def main():
         metavar="CODEC",
         help="Exclude compression codecs from plots/summaries (e.g. d10 lq d2_e8)",
     )
+    parser.add_argument(
+        "--only-families",
+        nargs="+",
+        default=[],
+        metavar="FAMILY",
+        help="Only include these model families (e.g. dinov2_rr openphenom_rr)",
+    )
     args = parser.parse_args()
 
     if not args.sweep_dir.exists():
@@ -1661,6 +1848,19 @@ def main():
 
     # Apply degenerate filter for summaries and plots
     df_plot = filter_degenerate(df) if args.filter_degenerate else df
+
+    # Include only specified families if requested
+    if args.only_families:
+        include_models = set()
+        for fam in args.only_families:
+            if fam in MODEL_FAMILIES:
+                include_models.update(MODEL_FAMILIES[fam])
+            else:
+                print(f"Warning: unknown family '{fam}', available: {list(MODEL_FAMILIES.keys())}")
+        if include_models:
+            before = len(df_plot)
+            df_plot = df_plot.filter(pl.col("model").is_in(list(include_models)))
+            print(f"Only families {args.only_families}: {before} -> {len(df_plot)} rows")
 
     # Exclude model families if requested
     if args.exclude_families:

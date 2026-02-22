@@ -36,7 +36,7 @@ def is_gpu_available() -> bool:
         # Try to get device info to verify GPU is actually accessible
         device = cp.cuda.Device()
         _GPU_DEVICE_INFO = {
-            "name": device.attributes.get("Name", "Unknown"),
+            "name": getattr(device, "name", "Unknown"),
             "compute_capability": device.compute_capability,
             "total_memory_gb": device.mem_info[1] / (1024**3),
         }

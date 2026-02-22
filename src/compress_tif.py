@@ -139,7 +139,8 @@ if IMAGECODECS_AVAILABLE:
         # "jpegxl_lossy_d15": Jpegxl(lossless=False, distance=15.0),
         # "jpegxl_lossy_d20_e2": Jpegxl(lossless=False, distance=20.0, effort=2),
         # "jpegxl_lossy_d30": Jpegxl(lossless=False, distance=30.0),
-        "jpegxl_lossy_d50": Jpegxl(lossless=False, distance=50.0),
+        # "jpegxl_lossy_d50": Jpegxl(lossless=False, distance=50.0),  # clamped to 25, same as d30
+        "jpegxl_lossy_mq_new": Jpegxl(lossless=False, distance=3.0),
     })
 
 # %% Group files based on their name

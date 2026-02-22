@@ -1,31 +1,32 @@
 # @package _global_
 
-# Focused Deep Learning Embeddings Sweep v6
+# Focused Deep Learning Embeddings Sweep v6 (expanded)
 #
-# Based on v5 findings:
-#   - TVN EFAAR wins 80% of DL models, TVN Original wins top score (morphem_mq)
-#   - PCA almost never helps → fix use_pca=false
-#   - norm_method is 54/46 → keep sweeping
-#   - tvn_epsilon was only tested at 0.5 → explore range
-#   - tvn_original_k was only tested at 64 → explore range
-#   - outlier_cutoff and prune_thresh not worth sweeping for embeddings
+# Based on v5/v6 findings — now sweeping more pipeline toggles:
+#   - norm_method: robustmad vs standardize (was 54/46)
+#   - norm_fit_controls: fit on controls vs all samples
+#   - use_int: inverse normal transform on/off
+#   - use_pca: PCA dimensionality reduction on/off
+#   - batch_method: tvn_efaar vs tvn_original vs none
+#   - tvn_efaar_epsilon / tvn_efaar_n_components: EFAAR params
+#   - tvn_original_k: TVN Original output dimensionality
 #
 # Pipeline order:
 #   1. NaN removal
 #   2. Low variance filtering (variance_threshold)
-#   3. Normalization (RobustMAD or Standardize)
+#   3. Normalization (RobustMAD or Standardize, ctrl or all)
 #   4. Outlier removal (fixed cutoff=100)
-#   5. Inverse Normal Transform
+#   5. Inverse Normal Transform (swept on/off)
 #   6. Correlation pruning (fixed threshold=0.9)
-#   7. Batch correction: TVN EFAAR or TVN Original (params swept)
+#   7. PCA (swept on/off, 256 components)
+#   8. Batch correction: TVN EFAAR, TVN Original, or None (params swept)
 #
-# Sweep grid (before redundancy filtering):
-#   2 norm × 2 batch × 3 tvn_eps × 3 tvn_k = 36
-#   After redundancy filtering (tvn_eps ignored when tvn_original, tvn_k ignored when tvn_efaar):
-#     tvn_efaar:    2 norm × 3 eps = 6
-#     tvn_original: 2 norm × 3 k   = 6
-#     Total: 12 configs per dataset
-#   35 DL datasets × 12 = 420 runs
+# Sweep grid after redundancy filtering:
+#   none:         2 norm × 2 fit_ctrl × 2 int × 2 pca              = 16
+#   tvn_efaar:    2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 eps × 2 n_comp = 160
+#   tvn_original: 2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 k       = 80
+#   Total: 256 configs per dataset
+#   110 DL datasets × 256 = 28,160 runs
 
 defaults:
   - /preset/gpu_base_variance_first
@@ -46,6 +47,7 @@ max_pc1_variance: 0.70
 # === DEFAULT VALUES (swept params need top-level keys for Hydra struct) ===
 batch_method: tvn_efaar
 norm_method: robustmad
+norm_fit_controls: true
 use_wellcorr: false
 use_int: true
 use_sample_norm: false
@@ -57,6 +59,7 @@ outlier_cutoff: 100
 
 # Swept parameters (defaults — overridden by hydra.sweeper.params)
 tvn_efaar_epsilon: 0.5
+tvn_efaar_n_components: 128
 tvn_original_k: 64
 
 agg_method: median
@@ -64,23 +67,27 @@ agg_method: median
 # Fixed params (not swept)
 tvn_cascade_k1: 128
 tvn_cascade_k2: 32
-spherize_epsilon: 1.0e-6
+spherize_epsilon: 0.5
 spherize_fit_controls: false
 
 # === FIXED PARAMETERS ===
 skip_visualization: true
 
 # === HYDRA SWEEP ===
-# After redundancy filtering: 12 configs per dataset
+# After redundancy filtering: 256 configs per dataset
 hydra:
   sweeper:
     params:
       norm_method: robustmad,standardize
-      batch_method: tvn_efaar,tvn_original
-      tvn_efaar_epsilon: 0.1,0.5,1.0
-      tvn_original_k: 32,64,128
+      norm_fit_controls: true,false
+      use_int: true,false
+      use_pca: true,false
+      batch_method: tvn_efaar,tvn_original,none
+      tvn_efaar_epsilon: 0.1,0.25,0.5,1.0,2.0
+      tvn_efaar_n_components: 128,256
+      tvn_original_k: 16,32,64,128,256
 
   launcher:
-    n_jobs: 8
+    n_jobs: 32
     prefer: processes
     verbose: 1
