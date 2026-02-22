@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Run from JUMP_core root directory
-cd /home/jfredinh/projects/JUMP_core
+cd "$(dirname "$0")"
 
 echo "==================================================="
 echo "Focused Sweep v6 — CP (54 configs) + DL (12 configs)"
@@ -14,17 +14,7 @@ echo ""
 cleanup_gpu() {
     echo "  Cleaning up GPU memory..."
     cd src/norm_3
-    pixi run python -c "
-import sys
-try:
-    import cupy as cp
-    mempool = cp.get_default_memory_pool()
-    mempool.free_all_blocks()
-    cp.cuda.Stream.null.synchronize()
-    print('    GPU memory cleaned')
-except Exception as e:
-    print(f'    GPU cleanup warning: {e}', file=sys.stderr)
-" 2>&1
+    pixi run python -c "import cupy as cp; cp.get_default_memory_pool().free_all_blocks(); cp.cuda.Stream.null.synchronize(); print('    GPU memory cleaned')" 2>&1 || echo "  GPU cleanup skipped"
     cd ../..
     sleep 2
     echo "  Cleanup complete"

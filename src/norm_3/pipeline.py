@@ -645,6 +645,56 @@ def normalize_tvn(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     return df
 
 
+def _check_dim_control_ratio(
+    n_features: int,
+    min_controls: int,
+    method_name: str,
+    config: dict,
+) -> int:
+    """Check feature-to-control ratio and clamp or abort if too high.
+
+    When batch correction operates in a space where n_features >> n_controls_per_batch,
+    the per-batch covariance estimate becomes rank-deficient and whitening amplifies
+    noise — creating spurious compound-level similarity (inflated PA).
+
+    Args:
+        n_features: requested output dimensionality
+        min_controls: minimum number of controls across batches
+        method_name: name for logging (e.g. "TVN EFAAR", "TVN Original")
+        config: step config dict with dim_ratio_threshold and dim_ratio_action
+
+    Returns:
+        Clamped n_features (may be reduced to min_controls - 1)
+
+    Raises:
+        ValueError: if action is "abort" and ratio exceeds threshold
+    """
+    threshold = config.get("dim_ratio_threshold", 2.5)
+    action = config.get("dim_ratio_action", "clamp")
+
+    if min_controls <= 0:
+        return n_features
+
+    ratio = n_features / min_controls
+    if ratio <= threshold:
+        return n_features
+
+    clamped = min_controls - 1
+    if action == "abort":
+        raise ValueError(
+            f"[{method_name}] dim/control ratio {ratio:.1f} exceeds threshold {threshold} "
+            f"(n_features={n_features}, min_controls_per_batch={min_controls}). "
+            f"Set dim_ratio_action=clamp to auto-reduce to {clamped}."
+        )
+
+    print(
+        f"  WARNING: dim/control ratio {ratio:.1f} > {threshold} "
+        f"(n_features={n_features}, min_controls_per_batch={min_controls})"
+    )
+    print(f"  Clamping output dims: {n_features} -> {clamped}")
+    return clamped
+
+
 def normalize_tvn_efaar(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     """Normalize using TVN_EFAAR (GPU-accelerated)."""
     print("\n=== Step: Normalize (TVN_EFAAR - GPU) ===")
@@ -676,6 +726,19 @@ def normalize_tvn_efaar(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         else:
             batch_labels = None
 
+        # Compute min controls per batch for dim/control ratio check
+        min_controls_per_batch = int(control_mask.sum())  # fallback: global total
+        if batch_labels is not None:
+            unique_b = cp.unique(batch_labels)
+            batch_ctrl_counts = []
+            for b in unique_b:
+                bc = int(((batch_labels == b) & control_mask_gpu).sum())
+                if bc >= 2:
+                    batch_ctrl_counts.append(bc)
+            if batch_ctrl_counts:
+                min_controls_per_batch = min(batch_ctrl_counts)
+                print(f"  Controls per batch: min={min_controls_per_batch}, max={max(batch_ctrl_counts)}")
+
         print(f"  Input shape: {X.shape}, controls: {control_mask.sum()}")
 
         # Step 1: Global center/scale on controls
@@ -687,6 +750,12 @@ def normalize_tvn_efaar(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         # Step 2: PCA fit on controls, transform all
         max_components = min(X.shape[1], int(control_mask.sum()) - 1)
         n_components = min(n_components, max_components)
+
+        # Check dim/control ratio and clamp if needed
+        n_components = _check_dim_control_ratio(
+            n_components, min_controls_per_batch, "TVN EFAAR", config
+        )
+
         print(f"  Step 2: PCA on controls (n_components={n_components})...")
         pca = PCATransform(n_components=n_components)
         pca.fit(X[control_mask_gpu])
@@ -748,16 +817,23 @@ def normalize_tvn_original(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         batch_labels = df[batch_col].to_numpy()
         control_mask = (df[control_col] == control_key).to_numpy()
 
-        # Build negcons dict
+        # Build negcons dict and compute min controls per batch
         negcons = {}
+        batch_ctrl_counts = []
         unique_batches = np.unique(batch_labels)
         for batch in unique_batches:
             batch_mask = batch_labels == batch
             batch_control_mask = batch_mask & control_mask
-            if batch_control_mask.sum() >= 2:
+            n_ctrl = int(batch_control_mask.sum())
+            if n_ctrl >= 2:
                 negcons[batch] = X_all[batch_control_mask]
+                batch_ctrl_counts.append(n_ctrl)
 
-        print(f"  {len(negcons)} batches with >=2 negcons")
+        min_controls_per_batch = min(batch_ctrl_counts) if batch_ctrl_counts else 0
+        print(f"  {len(negcons)} batches with >=2 negcons (min={min_controls_per_batch})")
+
+        # Check dim/control ratio and clamp k if needed
+        k = _check_dim_control_ratio(k, min_controls_per_batch, "TVN Original", config)
 
         # Fit TVN
         tvn = TVN_Original(k=k, epsilon=epsilon)
@@ -858,7 +934,9 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     control_col = config.get("control_col", "Metadata_control_type")
     control_key = config.get("control_key", "negcon")
 
-    print(f"  method: {method}, batch_col: {batch_col}, fit_on_controls: {fit_on_controls}")
+    is_global = not batch_col
+    scope_str = "GLOBAL (all plates)" if is_global else f"per-batch ({batch_col})"
+    print(f"  method: {method}, scope: {scope_str}, fit_on_controls: {fit_on_controls}, epsilon: {epsilon}")
 
     with GPUMemoryManager() as gpu:
         if batch_col and batch_col in df.columns:
@@ -894,18 +972,26 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
 
             df = pl.concat(normalized_dfs)
         else:
+            # Global spherize: process all plates together (JUMP recipe approach)
             X = gpu.transfer(df.select(features).to_numpy())
             spherize = Spherize(method=method, epsilon=epsilon)
 
             if fit_on_controls and control_col in df.columns:
                 control_mask = df[control_col] == control_key
                 X_fit = X[control_mask.to_numpy()]
+                n_controls = len(X_fit)
+                n_features = X.shape[1]
+                print(f"  Global spherize: fitting on {n_controls} controls, {n_features} features")
+                if n_controls < n_features:
+                    print(f"  WARNING: n_controls ({n_controls}) < n_features ({n_features})")
+                    print(f"  Covariance will be rank-deficient. Epsilon={epsilon} provides regularization.")
                 if len(X_fit) > 0:
                     spherize.fit(X_fit)
                     X_norm = to_cpu(spherize.transform(X))
                 else:
                     X_norm = to_cpu(spherize.fit_transform(X))
             else:
+                print(f"  Global spherize: fitting on all {X.shape[0]} samples, {X.shape[1]} features")
                 X_norm = to_cpu(spherize.fit_transform(X))
 
             # DEBUG: Check dimensions before creating Series
@@ -1180,12 +1266,15 @@ def generate_output_name(config: dict) -> str:
             method = params.get("method", "ZCA-cor")
             fit_ctrl = params.get("fit_on_controls", False)
             epsilon = params.get("epsilon", 1.0e-6)
+            batch_col = params.get("batch_col", "Metadata_Plate")
+            is_global = not batch_col or batch_col == ""
             # Format epsilon: 1e-6 -> "e6", 0.5 -> "e0.5"
             if epsilon < 0.001:
                 eps_str = f"e{abs(int(round(np.log10(epsilon))))}"
             else:
                 eps_str = f"e{epsilon}"
-            parts.append(method + ("_ctrl" if fit_ctrl else "_all") + f"_{eps_str}")
+            scope = "_global" if is_global else ""
+            parts.append(method + scope + ("_ctrl" if fit_ctrl else "_all") + f"_{eps_str}")
         elif step_name == "filter_features":
             # Add filter config to output name
             filters = params.get("filters", [])
@@ -1241,8 +1330,8 @@ def apply_sweep_overrides(config: dict) -> dict:
             elif step_name == "normalize_tvn_cascade":
                 step["enabled"] = (batch_method == "cascade_tvn")
             elif step_name == "normalize_spherize":
-                # Enable spherize if batch_method=spherize OR use_spherize=true
-                step["enabled"] = (batch_method == "spherize") or config.get("use_spherize", False)
+                # Enable spherize if batch_method=spherize/spherize_global OR use_spherize=true
+                step["enabled"] = (batch_method in ("spherize", "spherize_global")) or config.get("use_spherize", False)
             elif step_name == "normalize_robustmad":
                 # Disable if norm_method is not robustmad, or if norm_method is none
                 step["enabled"] = (norm_method == "robustmad")
@@ -1307,27 +1396,45 @@ def apply_sweep_overrides(config: dict) -> dict:
                 step["params"]["epsilon"] = config["tvn_efaar_epsilon"]
             if "tvn_efaar_n_components" in config:
                 step["params"]["n_components"] = config["tvn_efaar_n_components"]
+            if "dim_ratio_threshold" in config:
+                step["params"]["dim_ratio_threshold"] = config["dim_ratio_threshold"]
+            if "dim_ratio_action" in config:
+                step["params"]["dim_ratio_action"] = config["dim_ratio_action"]
 
         elif step_name == "normalize_tvn_original":
             if "tvn_original_k" in config:
                 step["params"]["k"] = config["tvn_original_k"]
+            if "dim_ratio_threshold" in config:
+                step["params"]["dim_ratio_threshold"] = config["dim_ratio_threshold"]
+            if "dim_ratio_action" in config:
+                step["params"]["dim_ratio_action"] = config["dim_ratio_action"]
 
         elif step_name == "normalize_tvn_cascade":
             if "tvn_cascade_k1" in config:
                 step["params"]["k1"] = config["tvn_cascade_k1"]
             if "tvn_cascade_k2" in config:
                 step["params"]["k2"] = config["tvn_cascade_k2"]
+            if "dim_ratio_threshold" in config:
+                step["params"]["dim_ratio_threshold"] = config["dim_ratio_threshold"]
+            if "dim_ratio_action" in config:
+                step["params"]["dim_ratio_action"] = config["dim_ratio_action"]
 
         elif step_name == "normalize_spherize":
             if "spherize_method" in config:
                 step["params"]["method"] = config["spherize_method"]
             if "spherize_epsilon" in config:
                 step["params"]["epsilon"] = config["spherize_epsilon"]
-            if "spherize_fit_controls" in config:
-                step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
-            # Force fit on all data when PCA is off (too few controls for high-dim covariance)
-            if not config.get("use_pca", False):
-                step["params"]["fit_on_controls"] = False
+            if batch_method == "spherize_global":
+                # JUMP recipe: global scope (all plates), fit on controls only
+                step["params"]["batch_col"] = ""
+                step["params"]["fit_on_controls"] = True
+            else:
+                if "spherize_fit_controls" in config:
+                    step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
+                # Per-batch spherize: force fit on all data when PCA is off
+                # (too few controls per plate for high-dim covariance)
+                if batch_method == "spherize" and not config.get("use_pca", False):
+                    step["params"]["fit_on_controls"] = False
 
         elif step_name == "normalize_pca":
             if "pca_n_components" in config:
@@ -1395,13 +1502,14 @@ def is_redundant_config(config: dict) -> tuple[bool, str | None]:
         if spherize_method != "PCA-cor":
             return True, f"use_spherize=false ignores spherize_method={spherize_method}"
 
-    # When batch_method != "spherize", spherize epsilon and fit_controls params don't matter
-    # Accept both 1e-6 and 0.5 as canonical defaults (different sweep versions)
-    if batch_method != "spherize":
-        spherize_epsilon = config.get("spherize_epsilon", 0.5)
-        spherize_fit_controls = config.get("spherize_fit_controls", False)
-        if spherize_epsilon not in (1.0e-6, 0.5) and abs(spherize_epsilon - 1.0e-6) > 1e-10 and abs(spherize_epsilon - 0.5) > 1e-10:
+    # When batch_method is not spherize or spherize_global, spherize params don't matter
+    # Accept 1e-6, 0.1, and 0.5 as canonical defaults (different sweep versions)
+    if batch_method not in ("spherize", "spherize_global"):
+        spherize_epsilon = config.get("spherize_epsilon", 0.1)
+        canonical_eps = {1.0e-6, 0.1, 0.5}
+        if not any(abs(spherize_epsilon - c) < 1e-10 for c in canonical_eps):
             return True, f"batch_method={batch_method} ignores spherize_epsilon={spherize_epsilon}"
+        spherize_fit_controls = config.get("spherize_fit_controls", False)
         if spherize_fit_controls != False:
             return True, f"batch_method={batch_method} ignores spherize_fit_controls={spherize_fit_controls}"
 

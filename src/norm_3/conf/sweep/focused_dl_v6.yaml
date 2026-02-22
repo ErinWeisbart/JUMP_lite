@@ -7,9 +7,10 @@
 #   - norm_fit_controls: fit on controls vs all samples
 #   - use_int: inverse normal transform on/off
 #   - use_pca: PCA dimensionality reduction on/off
-#   - batch_method: tvn_efaar vs tvn_original vs none
+#   - batch_method: tvn_efaar vs tvn_original vs spherize_global vs none
 #   - tvn_efaar_epsilon / tvn_efaar_n_components: EFAAR params
 #   - tvn_original_k: TVN Original output dimensionality
+#   - spherize_epsilon: Spherize regularization (global ZCA-cor, JUMP recipe)
 #
 # Pipeline order:
 #   1. NaN removal
@@ -19,14 +20,15 @@
 #   5. Inverse Normal Transform (swept on/off)
 #   6. Correlation pruning (fixed threshold=0.9)
 #   7. PCA (swept on/off, 256 components)
-#   8. Batch correction: TVN EFAAR, TVN Original, or None (params swept)
+#   8. Batch correction: TVN EFAAR, TVN Original, Spherize Global, or None (params swept)
 #
 # Sweep grid after redundancy filtering:
-#   none:         2 norm × 2 fit_ctrl × 2 int × 2 pca              = 16
-#   tvn_efaar:    2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 eps × 2 n_comp = 160
-#   tvn_original: 2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 k       = 80
-#   Total: 256 configs per dataset
-#   110 DL datasets × 256 = 28,160 runs
+#   none:            2 norm × 2 fit_ctrl × 2 int × 2 pca              = 16
+#   tvn_efaar:       2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 eps × 2 n_comp = 160
+#   tvn_original:    2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 k       = 80
+#   spherize_global: 2 norm × 2 fit_ctrl × 2 int × 2 pca × 5 eps     = 80
+#   Total: 336 configs per dataset
+#   110 DL datasets × 336 = 36,960 runs
 
 defaults:
   - /preset/gpu_base_variance_first
@@ -67,14 +69,19 @@ agg_method: median
 # Fixed params (not swept)
 tvn_cascade_k1: 128
 tvn_cascade_k2: 32
-spherize_epsilon: 0.5
+spherize_epsilon: 0.1
 spherize_fit_controls: false
+
+# Dim/control ratio guard: clamp batch correction output dims when
+# n_features / min_controls_per_batch exceeds threshold (prevents overfitting)
+dim_ratio_threshold: 2.5    # ratio above which clamping kicks in
+dim_ratio_action: clamp     # "clamp" = reduce to min_controls-1, "abort" = fail run
 
 # === FIXED PARAMETERS ===
 skip_visualization: true
 
 # === HYDRA SWEEP ===
-# After redundancy filtering: 256 configs per dataset
+# After redundancy filtering: 336 configs per dataset
 hydra:
   sweeper:
     params:
@@ -82,10 +89,11 @@ hydra:
       norm_fit_controls: true,false
       use_int: true,false
       use_pca: true,false
-      batch_method: tvn_efaar,tvn_original,none
+      batch_method: tvn_efaar,tvn_original,spherize_global,none
       tvn_efaar_epsilon: 0.1,0.25,0.5,1.0,2.0
       tvn_efaar_n_components: 128,256
       tvn_original_k: 16,32,64,128,256
+      spherize_epsilon: 0.0001,0.01,0.1,1.0,100.0
 
   launcher:
     n_jobs: 32

@@ -112,15 +112,21 @@ steps:
     params:
       batch_col: Metadata_Plate
       epsilon: 0.5
+      dim_ratio_threshold: 2.5  # max n_features / min_controls_per_batch before clamping
+      dim_ratio_action: clamp   # "clamp" (reduce dims) or "abort" (fail run)
 
-  # Step 8b: Batch correction - Spherize/ZCA whitening PER BATCH (AFTER PCA)
+  # Step 8b: Batch correction - Spherize/ZCA whitening (AFTER PCA)
+  # Default: GLOBAL scope (JUMP recipe: fit across all plates on controls)
+  # When batch_col="" → global; when "Metadata_Plate" → per-batch
   - name: normalize_spherize
     enabled: false
     params:
       method: "ZCA-cor"
-      batch_col: "Metadata_Plate"  # Per-batch spherize to preserve biological signal
-      fit_on_controls: false
-      epsilon: 0.5
+      batch_col: ""  # Global scope (JUMP recipe approach)
+      fit_on_controls: true  # Fit on DMSO controls only
+      control_col: Metadata_control_type
+      control_key: negcon
+      epsilon: 0.1
 
   # Other batch correction methods (not used in this sweep)
   - name: normalize_tvn
@@ -139,6 +145,8 @@ steps:
       control_col: Metadata_control_type
       control_key: negcon
       k: 64  # Match PCA output dimensionality
+      dim_ratio_threshold: 2.5
+      dim_ratio_action: clamp
 
   # Step 8d: Batch correction - Cascade TVN
   - name: normalize_tvn_cascade

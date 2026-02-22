@@ -595,6 +595,22 @@ def parse_config_name(config_name: str) -> dict:
             if k_match:
                 settings["tvn_cascade_k1"] = int(k_match.group(1))
                 settings["tvn_cascade_k2"] = int(k_match.group(2))
+        elif part.startswith("ZCA-cor_global_"):
+            settings["batch_method"] = "spherize_global"
+            # Parse: ZCA-cor_global_ctrl_e0.1 or ZCA-cor_global_ctrl_e4 (=1e-4)
+            remainder = part[len("ZCA-cor_global_"):]
+            if "_e" in remainder:
+                fit_part, eps_part = remainder.rsplit("_e", 1)
+                settings["spherize_fit"] = fit_part  # "ctrl" or "all"
+                try:
+                    # e6 means 1e-6, e0.5 means 0.5, e100.0 means 100.0
+                    eps_val = float(eps_part)
+                    if "." not in eps_part and eps_val >= 2:
+                        settings["spherize_epsilon"] = 10 ** (-eps_val)
+                    else:
+                        settings["spherize_epsilon"] = eps_val
+                except ValueError:
+                    pass
         elif part.startswith("ZCA-cor_"):
             settings["batch_method"] = "spherize"
             # Parse: ZCA-cor_all_e0.5 or ZCA-cor_ctrl_e6
@@ -603,10 +619,10 @@ def parse_config_name(config_name: str) -> dict:
                 fit_part, eps_part = remainder.rsplit("_e", 1)
                 settings["spherize_fit"] = fit_part  # "all" or "ctrl"
                 try:
-                    # e6 means 1e-6, e0.5 means 0.5
+                    # e6 means 1e-6, e0.5 means 0.5, e100.0 means 100.0
                     eps_val = float(eps_part)
-                    if eps_val == 6:
-                        settings["spherize_epsilon"] = 1e-6
+                    if "." not in eps_part and eps_val >= 2:
+                        settings["spherize_epsilon"] = 10 ** (-eps_val)
                     else:
                         settings["spherize_epsilon"] = eps_val
                 except ValueError:
