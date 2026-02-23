@@ -34,6 +34,7 @@ pixi.lock
 
 # Project-specific data
 images/
+metadata/
 *.tif
 *.tiff
 *.zarr/
@@ -74,3 +75,4 @@ JUMP_core.code-workspace
 # OS
 .DS_Store
 Thumbs.db
+dataset_curration/input/refchemdb_inchikey.csv

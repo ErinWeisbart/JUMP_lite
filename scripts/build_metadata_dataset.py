@@ -2,7 +2,7 @@
 """
 Build the metadata_dataset_filtered_4reps.parquet file.
 
-This script combines the full 6-step pipeline for generating the final
+This script combines the full 8-step pipeline for generating the final
 metadata dataset used in JUMP_core experiments. Each step corresponds
 to a previously separate script, now unified into a single reference
 implementation.
@@ -14,6 +14,8 @@ Pipeline Steps:
     Step 4: Prepare negative controls          (from prepare_negative_controls.py)
     Step 5: Match metadata to profiles         (from compare_metadata_profiles.py)
     Step 6: Filter to >=4 replicates           (from compare_compound_overlap.py)
+    Step 7: Build target lists                 (MOTIVE + RefChemDB annotations)
+    Step 8: Filter raw CP profiles             (match wells to metadata)
 
 Dependencies:
     - polars: DataFrame operations
@@ -95,25 +97,29 @@ NEGATIVE_CONTROL_JCPS = [
     "JCP2022_085227",
     "JCP2022_800001",   # Non-targeting guide (CRISPR)
     "JCP2022_800002",
-    "JCP2022_805264",   # LacZ (ORF)
-    "JCP2022_915128",   # Untreated (ORF)
+    "JCP2022_915128",   # BFP (ORF negcon)
+    "JCP2022_915129",   # HcRed (ORF negcon)
+    "JCP2022_915130",   # Luciferase (ORF negcon)
+    "JCP2022_915131",   # LacZ (ORF negcon)
 ]
 
 # Negative control JCP IDs by modality (used in Step 4).
 # Each plate type has its own appropriate negative control.
+# ORF negcons are non-human reporter genes (per JUMP perturbation_control.csv).
+# Note: JCP2022_805264 was previously listed here but is actually PLK1 (CRISPR poscon).
 MODALITY_NEGCONS = {
-    "COMPOUND": ["JCP2022_033924"],                # DMSO
-    "CRISPR":   ["JCP2022_800001"],                # Non-targeting guide
-    "ORF":      ["JCP2022_805264", "JCP2022_915128"],  # LacZ / untreated
+    "COMPOUND": ["JCP2022_033924"],                                    # DMSO
+    "CRISPR":   ["JCP2022_800001"],                                    # Non-targeting guide
+    "ORF":      ["JCP2022_915128", "JCP2022_915129",                   # BFP, HcRed
+                 "JCP2022_915130", "JCP2022_915131"],                  # Luciferase, LacZ
 }
 
 # Fraction of negative controls to sample per plate, by modality.
-# Compound and CRISPR plates have many negative control wells, so we take
-# only half to keep the dataset balanced.  ORF plates have very few negative
-# control wells, so we take all of them.
+# Default: keep all negative controls (fraction=1.0).  Override with
+# --negcon-fraction to sample a subset (e.g. 0.5 for 50%).
 MODALITY_FRACTION = {
-    "COMPOUND": 0.5,
-    "CRISPR":   0.5,
+    "COMPOUND": 1.0,
+    "CRISPR":   1.0,
     "ORF":      1.0,
 }
 
@@ -190,6 +196,16 @@ EXCLUDED_PLATES = {
     "BR00123524": "PLATE_TYPE_FILTER - TARGET1 not in config plate_types",
     "BR00125181": "PLATE_TYPE_FILTER - TARGET1 not in config plate_types",
     "BR00125638": "PLATE_TYPE_FILTER - TARGET1 not in config plate_types",
+    # Source 2 - Batch_13 has only 1 plate (32 negcons) - too few samples for
+    # reliable batch correction
+    "1086289792": "SMALL_BATCH_REDLIST (20211003_Batch_13) - only 1 plate in batch",
+    # Source 7 - Run6/7/9M have 1-2 plates each (32-72 negcons) - too few
+    # samples for reliable batch correction
+    "CP7-SC1-01":  "SMALL_BATCH_REDLIST (20211121_Run6) - only 1 plate in batch",
+    "CP7-SC1-02":  "SMALL_BATCH_REDLIST (20211126_Run7) - only 2 plates in batch",
+    "CP8-SC1-02":  "SMALL_BATCH_REDLIST (20211126_Run7) - only 2 plates in batch",
+    "CP6-SC1-18":  "SMALL_BATCH_REDLIST (20211211_Run9M) - only 2 plates in batch",
+    "CP7-SC1-03":  "SMALL_BATCH_REDLIST (20211211_Run9M) - only 2 plates in batch",
 }
 
 
@@ -682,6 +698,7 @@ def step4_prepare_negative_controls(
     filtered_metadata: pl.DataFrame,
     output_dir: Path,
     seed: int = 42,
+    negcon_fraction: Optional[float] = None,
     save_intermediates: bool = False,
 ) -> pl.DataFrame:
     """Sample negative control wells for each plate in the filtered metadata.
@@ -691,6 +708,8 @@ def step4_prepare_negative_controls(
             ``Perturbation_Type`` column.
         output_dir: Directory for intermediate outputs.
         seed: Random seed for reproducible sampling.
+        negcon_fraction: If provided, overrides MODALITY_FRACTION for all
+            modalities.  Use 1.0 to keep all negative controls.
         save_intermediates: Whether to write the negative controls parquet.
 
     Returns:
@@ -800,13 +819,22 @@ def step4_prepare_negative_controls(
     # This uses pandas groupby for per-plate random sampling because polars
     # sample operates on the full DataFrame rather than per-group.
     # ------------------------------------------------------------------
+    # Build effective fraction map, applying override if provided
+    effective_fractions = dict(MODALITY_FRACTION)
+    if negcon_fraction is not None:
+        for mod in effective_fractions:
+            effective_fractions[mod] = negcon_fraction
+        print(f"\n  Using override negcon_fraction={negcon_fraction} for all modalities")
+
     print(f"\n  Sampling negative controls (seed={seed})...")
+    for mod, frac in effective_fractions.items():
+        print(f"    {mod}: fraction={frac}")
     neg_controls_pd = neg_controls.to_pandas()
 
     sampled_dfs: list[pd.DataFrame] = []
     for _plate, group in neg_controls_pd.groupby("Metadata_Plate"):
         modality = group["Modality"].iloc[0]
-        fraction = MODALITY_FRACTION.get(modality, 0.5)
+        fraction = effective_fractions.get(modality, 1.0)
 
         if fraction >= 1.0:
             sampled_dfs.append(group)
@@ -1348,6 +1376,391 @@ def _print_refchemdb_overlap(
 
 
 # ============================================================================
+# Step 7: Build Target Lists (MOTIVE + RefChemDB)
+# ============================================================================
+# This step adds two target annotation columns to the filtered metadata:
+#   - Metadata_MOTIVE_target: Gene targets from the MOTIVE compound-gene
+#     annotation database (annotations_compound_gene.parquet).  For ORF/CRISPR
+#     wells, the gene symbol (Metadata_Symbol) is used directly.
+#   - Metadata_RefChemDB_target: Gene targets from the RefChemDB curated
+#     database, filtered to Tier1-3 confidence.  Higher confidence than MOTIVE
+#     but lower coverage.
+#
+# Compounds are mapped via: JCP2022 -> InChIKey (from Step 1 mapping) ->
+# gene targets (from annotation databases).  Targets are aggregated as
+# pipe-separated sorted strings per JCP2022 ID.
+#
+# Wells without target annotations (negcons, unannotated compounds) receive
+# the value "unknown".
+# ============================================================================
+
+
+def step7_build_target_list(
+    df_filtered: pl.DataFrame,
+    annotations_cg_path: str,
+    output_dir: Path,
+    refchemdb_path: Optional[str] = None,
+    save_intermediates: bool = False,
+) -> pl.DataFrame:
+    """Add target annotation columns to the filtered metadata.
+
+    Args:
+        df_filtered: Filtered metadata from Step 6.
+        annotations_cg_path: Path to compound-gene annotations parquet
+            (MOTIVE database).
+        output_dir: Directory containing inchikey_to_jcp2022_mapping_combined.csv
+            and for saving outputs.
+        refchemdb_path: Optional path to refchemdb_conf_jump_matched.parquet.
+        save_intermediates: Whether to write intermediate files.
+
+    Returns:
+        DataFrame with added Metadata_MOTIVE_target and optionally
+        Metadata_RefChemDB_target columns.
+    """
+    print("\n" + "=" * 70)
+    print("STEP 7: Build Target Lists (MOTIVE + RefChemDB)")
+    print("=" * 70)
+
+    # ------------------------------------------------------------------
+    # 7a. Load InChIKey -> JCP2022 mapping from Step 1 output
+    # ------------------------------------------------------------------
+    mapping_path = output_dir / "inchikey_to_jcp2022_mapping_combined.csv"
+    print(f"  Loading InChIKey -> JCP2022 mapping from: {mapping_path}")
+    jcp_mapping = pl.read_csv(str(mapping_path))
+    print(f"    Entries: {jcp_mapping.height:,}")
+
+    # ------------------------------------------------------------------
+    # 7b. Build MOTIVE compound targets
+    #
+    # Join: annotations_cg (inchikey -> gene target)
+    #   via jcp_mapping (InChIKey_Connectivity -> JCP2022)
+    #   to get: JCP2022 -> gene targets
+    # ------------------------------------------------------------------
+    print("\n  Building MOTIVE compound targets...")
+    df_cg = pl.read_parquet(annotations_cg_path)
+    print(f"    Compound-gene annotations: {df_cg.height:,} rows")
+
+    # Extract connectivity layer from annotation InChIKeys
+    df_cg = df_cg.filter(pl.col("inchikey").is_not_null()).with_columns(
+        pl.col("inchikey")
+        .str.split("-")
+        .list.first()
+        .alias("InChIKey_Connectivity")
+    )
+
+    # Join annotations with JCP mapping via connectivity layer
+    cg_with_jcp = df_cg.join(
+        jcp_mapping.select("InChIKey_Connectivity", "Metadata_JCP2022"),
+        on="InChIKey_Connectivity",
+        how="inner",
+    )
+    print(f"    Annotations matched to JCP2022: {cg_with_jcp.height:,}")
+
+    # Aggregate unique sorted targets per JCP2022 as pipe-separated string
+    motive_targets = (
+        cg_with_jcp
+        .filter(pl.col("target").is_not_null())
+        .group_by("Metadata_JCP2022")
+        .agg(
+            pl.col("target")
+            .unique()
+            .sort()
+            .str.join("|")
+            .alias("Metadata_MOTIVE_target")
+        )
+    )
+    print(f"    Unique JCP2022 IDs with MOTIVE targets: {motive_targets.height:,}")
+
+    # ------------------------------------------------------------------
+    # 7c. Merge MOTIVE targets into metadata
+    #
+    # For ORF/CRISPR: use Metadata_Symbol directly as the target
+    # For compounds: use the MOTIVE mapping
+    # For negcons/unknown: "unknown"
+    # ------------------------------------------------------------------
+    print("\n  Merging MOTIVE targets into metadata...")
+
+    # Drop any pre-existing target columns (idempotency for --skip-to 7 reruns)
+    drop_cols = [
+        c for c in df_filtered.columns
+        if c in ("Metadata_MOTIVE_target", "Metadata_RefChemDB_target",
+                 "Metadata_MOTIVE_target_right", "Metadata_RefChemDB_target_right")
+    ]
+    if drop_cols:
+        df_filtered = df_filtered.drop(drop_cols)
+        print(f"    Dropped pre-existing columns: {drop_cols}")
+
+    # Cast JCP2022 columns to string for joining (metadata may have categorical)
+    df = df_filtered.with_columns(
+        pl.col("Metadata_JCP2022").cast(pl.Utf8).alias("_jcp_str")
+    )
+    motive_targets = motive_targets.with_columns(
+        pl.col("Metadata_JCP2022").cast(pl.Utf8)
+    )
+
+    # Join compound targets
+    df = df.join(
+        motive_targets,
+        left_on="_jcp_str",
+        right_on="Metadata_JCP2022",
+        how="left",
+    )
+
+    # Priority: negcons -> "unknown", ORF/CRISPR treatments -> gene symbol,
+    # compounds with annotation -> MOTIVE target, else -> "unknown"
+    df = df.with_columns(
+        pl.when(pl.col("Metadata_pert_type").cast(pl.Utf8) == "negcon")
+        .then(pl.lit("unknown"))
+        .when(
+            pl.col("Metadata_Perturbation_Type").cast(pl.Utf8).is_in(["orf", "crispr"])
+        )
+        .then(pl.col("Metadata_Symbol").cast(pl.Utf8))
+        .when(pl.col("Metadata_MOTIVE_target").is_not_null())
+        .then(pl.col("Metadata_MOTIVE_target"))
+        .otherwise(pl.lit("unknown"))
+        .alias("Metadata_MOTIVE_target")
+    ).drop("_jcp_str")
+
+    # Report coverage
+    n_with_target = df.filter(pl.col("Metadata_MOTIVE_target") != "unknown").height
+    n_total = df.height
+    print(f"    Wells with MOTIVE target: {n_with_target:,} / {n_total:,}")
+
+    # Per perturbation type breakdown
+    for ptype in ["orf", "crispr", "compound"]:
+        subset = df.filter(
+            pl.col("Metadata_Perturbation_Type").cast(pl.Utf8) == ptype
+        )
+        annotated = subset.filter(
+            pl.col("Metadata_MOTIVE_target") != "unknown"
+        ).height
+        unique_jcps = subset.filter(
+            pl.col("Metadata_MOTIVE_target") != "unknown"
+        ).select("Metadata_JCP2022").n_unique()
+        print(
+            f"    {ptype}: {annotated:,} wells annotated "
+            f"({unique_jcps:,} unique JCPs)"
+        )
+
+    # ------------------------------------------------------------------
+    # 7d. Build RefChemDB targets (if provided)
+    # ------------------------------------------------------------------
+    if refchemdb_path and Path(refchemdb_path).exists():
+        print(f"\n  Building RefChemDB targets from: {refchemdb_path}")
+        df_refchemdb = pl.read_parquet(refchemdb_path)
+        print(f"    Total RefChemDB rows: {df_refchemdb.height:,}")
+
+        # Filter to Tier1-3 (exclude "Excluded")
+        df_ref_filtered = df_refchemdb.filter(
+            pl.col("WithinModalityTier").is_in(["Tier1", "Tier2", "Tier3"])
+        )
+        print(f"    After Tier1-3 filter: {df_ref_filtered.height:,}")
+
+        # Aggregate unique sorted targets per JCP2022
+        refchemdb_targets = (
+            df_ref_filtered
+            .filter(pl.col("target").is_not_null())
+            .group_by("Metadata_JCP2022")
+            .agg(
+                pl.col("target")
+                .unique()
+                .sort()
+                .str.join("|")
+                .alias("Metadata_RefChemDB_target")
+            )
+        )
+        print(
+            f"    Unique JCP2022 IDs with RefChemDB targets: "
+            f"{refchemdb_targets.height:,}"
+        )
+
+        # Merge into metadata
+        df = df.with_columns(
+            pl.col("Metadata_JCP2022").cast(pl.Utf8).alias("_jcp_str")
+        )
+        refchemdb_targets = refchemdb_targets.with_columns(
+            pl.col("Metadata_JCP2022").cast(pl.Utf8)
+        )
+
+        df = df.join(
+            refchemdb_targets,
+            left_on="_jcp_str",
+            right_on="Metadata_JCP2022",
+            how="left",
+        )
+
+        # Priority: negcons -> "unknown", ORF/CRISPR treatments -> gene symbol,
+        # compounds with annotation -> RefChemDB target, else -> "unknown"
+        df = df.with_columns(
+            pl.when(pl.col("Metadata_pert_type").cast(pl.Utf8) == "negcon")
+            .then(pl.lit("unknown"))
+            .when(
+                pl.col("Metadata_Perturbation_Type")
+                .cast(pl.Utf8)
+                .is_in(["orf", "crispr"])
+            )
+            .then(pl.col("Metadata_Symbol").cast(pl.Utf8))
+            .when(pl.col("Metadata_RefChemDB_target").is_not_null())
+            .then(pl.col("Metadata_RefChemDB_target"))
+            .otherwise(pl.lit("unknown"))
+            .alias("Metadata_RefChemDB_target")
+        ).drop("_jcp_str")
+
+        # Report coverage
+        n_with_ref = df.filter(
+            pl.col("Metadata_RefChemDB_target") != "unknown"
+        ).height
+        print(f"    Wells with RefChemDB target: {n_with_ref:,} / {n_total:,}")
+
+        for ptype in ["orf", "crispr", "compound"]:
+            subset = df.filter(
+                pl.col("Metadata_Perturbation_Type").cast(pl.Utf8) == ptype
+            )
+            annotated = subset.filter(
+                pl.col("Metadata_RefChemDB_target") != "unknown"
+            ).height
+            unique_jcps = subset.filter(
+                pl.col("Metadata_RefChemDB_target") != "unknown"
+            ).select("Metadata_JCP2022").n_unique()
+            print(
+                f"    {ptype}: {annotated:,} wells annotated "
+                f"({unique_jcps:,} unique JCPs)"
+            )
+    else:
+        if refchemdb_path:
+            print(f"\n  WARNING: RefChemDB file not found: {refchemdb_path}")
+        else:
+            print("\n  Skipping RefChemDB targets (--refchemdb not provided)")
+
+    # ------------------------------------------------------------------
+    # 7e. Add boolean negcon column for copairs compatibility
+    # ------------------------------------------------------------------
+    if "Metadata_pert_type" in df.columns:
+        df = df.with_columns(
+            (pl.col("Metadata_pert_type").cast(pl.Utf8) == "negcon").alias("Metadata_negcon")
+        )
+        n_neg = df["Metadata_negcon"].sum()
+        print(f"\n  Added Metadata_negcon (boolean): {n_neg:,} negcons")
+
+    # ------------------------------------------------------------------
+    # 7f. Save the updated metadata
+    # ------------------------------------------------------------------
+    output_path = output_dir / "metadata_dataset_filtered_4reps.parquet"
+    df.write_parquet(output_path)
+    print(f"\n  Saved updated metadata: {output_path}")
+    print(f"  Columns: {df.columns}")
+    print(f"  Rows: {df.height:,}")
+
+    return df
+
+
+# ============================================================================
+# Step 8: Filter Raw CellProfiler Profiles to Match Metadata
+# ============================================================================
+# This step takes the full JUMP CellProfiler profiles (well-level, ~3700
+# features) and filters them to the exact wells present in the final
+# metadata.  The output is formatted to match the DL feature parquets
+# (Metadata_id as first column, features in the middle, metadata at end).
+#
+# This ensures the CP baseline uses the same wells as the DL models,
+# enabling fair comparison in the normalization sweeps.
+# ============================================================================
+
+
+def step8_filter_cp_profiles(
+    metadata_path: Path,
+    cp_profiles_path: str,
+    output_path: Path,
+) -> None:
+    """Filter raw CellProfiler profiles to wells in the metadata.
+
+    Args:
+        metadata_path: Path to the final metadata parquet (from Step 7).
+        cp_profiles_path: Path to the raw JUMP CP profiles parquet.
+        output_path: Path for the filtered output parquet.
+    """
+    print("\n" + "=" * 70)
+    print("STEP 8: Filter Raw CellProfiler Profiles")
+    print("=" * 70)
+
+    join_cols = ["Metadata_Source", "Metadata_Plate", "Metadata_Well"]
+
+    # ------------------------------------------------------------------
+    # 8a. Load metadata (wells of interest)
+    # ------------------------------------------------------------------
+    print(f"  Loading metadata: {metadata_path}")
+    meta_df = pl.read_parquet(str(metadata_path))
+    meta_df = meta_df.with_columns([pl.col(c).cast(pl.Utf8) for c in join_cols])
+    print(f"    Metadata wells: {meta_df.height:,}")
+
+    # ------------------------------------------------------------------
+    # 8b. Load source CP profiles (feature + join columns only)
+    # ------------------------------------------------------------------
+    print(f"  Loading CP profiles: {cp_profiles_path}")
+    source_df = pl.read_parquet(cp_profiles_path)
+    print(f"    Source shape: {source_df.shape}")
+
+    # Keep only feature columns (non-Metadata_) + join columns
+    feature_cols = [c for c in source_df.columns if not c.startswith("Metadata_")]
+    source_df = source_df.select(join_cols + feature_cols)
+    source_df = source_df.with_columns([pl.col(c).cast(pl.Utf8) for c in join_cols])
+    print(f"    Feature columns: {len(feature_cols):,}")
+
+    # ------------------------------------------------------------------
+    # 8c. Inner join to filter to metadata wells
+    # ------------------------------------------------------------------
+    print("  Joining source features with metadata...")
+    filtered_df = source_df.join(meta_df, on=join_cols, how="inner")
+    print(f"    Matched wells: {filtered_df.height:,}")
+
+    if len(filtered_df) == 0:
+        print("  ERROR: No matching wells found!")
+        return
+
+    # ------------------------------------------------------------------
+    # 8d. Create Metadata_id and add model/dataset/compression columns
+    # ------------------------------------------------------------------
+    filtered_df = filtered_df.with_columns([
+        (
+            pl.col("Metadata_Source") + "__" +
+            pl.col("Metadata_Batch") + "__" +
+            pl.col("Metadata_Plate") + "__" +
+            pl.col("Metadata_Well")
+        ).alias("Metadata_id"),
+        pl.lit("cellprofiler_raw").alias("Metadata_model"),
+        pl.lit("jump_lite").alias("Metadata_dataset"),
+        pl.lit("none").alias("Metadata_compression"),
+    ])
+
+    # ------------------------------------------------------------------
+    # 8e. Arrange columns: Metadata_id, features, then trailing metadata
+    # ------------------------------------------------------------------
+    trailing_metadata = [
+        "Metadata_Source", "Metadata_Batch", "Metadata_Plate", "Metadata_Well",
+        "Metadata_pert_type", "Metadata_Perturbation_Type",
+        "Metadata_JCP2022", "Metadata_broad_sample", "Metadata_Symbol",
+        "Metadata_model", "Metadata_dataset", "Metadata_compression",
+    ]
+    final_order = ["Metadata_id"] + feature_cols + [
+        c for c in trailing_metadata if c in filtered_df.columns
+    ]
+    filtered_df = filtered_df.select(final_order)
+
+    # ------------------------------------------------------------------
+    # 8f. Save output
+    # ------------------------------------------------------------------
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    filtered_df.write_parquet(output_path)
+
+    n_meta = len([c for c in filtered_df.columns if c.startswith("Metadata_")])
+    n_feat = len(filtered_df.columns) - n_meta
+    print(f"\n  Saved: {output_path}")
+    print(f"  Rows: {filtered_df.height:,}")
+    print(f"  Feature columns: {n_feat:,}")
+    print(f"  Metadata columns: {n_meta}")
+
+
+# ============================================================================
 # CLI and Main Orchestration
 # ============================================================================
 
@@ -1357,7 +1770,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Build metadata_dataset_filtered_4reps.parquet via the "
-            "6-step JUMP pipeline."
+            "8-step JUMP pipeline."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
@@ -1398,10 +1811,20 @@ def parse_args() -> argparse.Namespace:
     input_group.add_argument(
         "--refchemdb",
         type=str,
+        default="/home/jfredinh/projects/JUMP_core/metadata/refchemdb_conf_jump_matched.parquet",
+        help=(
+            "Path to refchemdb_conf_jump_matched.parquet (Steps 6-7). "
+            "Default: %(default)s"
+        ),
+    )
+    input_group.add_argument(
+        "--cp-output",
+        type=str,
         default=None,
         help=(
-            "Path to refchemdb_conf_jump_matched.parquet (Step 6, optional). "
-            "If provided, overlap statistics will be printed."
+            "Output path for filtered CP profiles parquet (Step 8). "
+            "Default: <output-dir>/../data/features/jump_lite/"
+            "cellprofiler_raw_jump_lite_raw_features.parquet"
         ),
     )
 
@@ -1470,9 +1893,9 @@ def parse_args() -> argparse.Namespace:
         "--skip-to",
         type=int,
         default=1,
-        choices=[1, 2, 3, 4, 5, 6],
+        choices=[1, 2, 3, 4, 5, 6, 7, 8],
         help=(
-            "Resume from a specific step (1-6). Requires that intermediate "
+            "Resume from a specific step (1-8). Requires that intermediate "
             "files for prior steps exist (via --save-intermediates or "
             "explicit --*-metadata paths). Default: %(default)s"
         ),
@@ -1498,6 +1921,17 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Minimum replicates for compound filtering in Step 6. "
             "Default: %(default)s"
+        ),
+    )
+    threshold_group.add_argument(
+        "--negcon-fraction",
+        type=float,
+        default=None,
+        help=(
+            "Fraction of negative controls to sample per plate in Step 4 "
+            "(0.0-1.0). Overrides the per-modality defaults in "
+            "MODALITY_FRACTION. Use 1.0 to keep all negcons, 0.5 to sample "
+            "half. If not provided, uses the defaults (all 1.0)."
         ),
     )
     threshold_group.add_argument(
@@ -1548,6 +1982,7 @@ def main() -> None:
     print(f"  Save intermediates:  {args.save_intermediates}")
     print(f"  Min fill rate:       {args.min_fill_rate}%")
     print(f"  Min replicates:      {args.min_replicates}")
+    print(f"  Negcon fraction:     {args.negcon_fraction or 'default (all 1.0)'}")
     print(f"  Random seed:         {args.seed}")
     print()
 
@@ -1629,6 +2064,7 @@ def main() -> None:
             filtered_metadata=filtered_metadata,
             output_dir=output_dir,
             seed=args.seed,
+            negcon_fraction=args.negcon_fraction,
             save_intermediates=args.save_intermediates,
         )
     else:
@@ -1671,12 +2107,47 @@ def main() -> None:
             )
 
     # ---- Step 6: Filter to >= N Replicates ----
-    df_final = step6_filter_by_replicates(
-        metadata_dataset=metadata_dataset,
-        output_dir=output_dir,
-        min_replicates=args.min_replicates,
-        refchemdb_path=args.refchemdb,
-        save_intermediates=args.save_intermediates,
+    if skip_to <= 6:
+        df_filtered_final = step6_filter_by_replicates(
+            metadata_dataset=metadata_dataset,
+            output_dir=output_dir,
+            min_replicates=args.min_replicates,
+            refchemdb_path=args.refchemdb,
+            save_intermediates=args.save_intermediates,
+        )
+    else:
+        filtered_path = str(
+            output_dir / "metadata_dataset_filtered_4reps.parquet"
+        )
+        print(f"  Skipping Step 6: loading from {filtered_path}")
+        df_filtered_final = pl.read_parquet(filtered_path)
+
+    # ---- Step 7: Build Target Lists ----
+    if skip_to <= 7:
+        df_final = step7_build_target_list(
+            df_filtered=df_filtered_final,
+            annotations_cg_path=args.annotations_cg,
+            output_dir=output_dir,
+            refchemdb_path=args.refchemdb,
+            save_intermediates=args.save_intermediates,
+        )
+    else:
+        filtered_path = str(
+            output_dir / "metadata_dataset_filtered_4reps.parquet"
+        )
+        print(f"  Skipping Step 7: loading from {filtered_path}")
+        df_final = pl.read_parquet(filtered_path)
+
+    # ---- Step 8: Filter Raw CellProfiler Profiles ----
+    cp_output = args.cp_output or str(
+        output_dir.parent / "data" / "features" / "jump_lite"
+        / "cellprofiler_raw_jump_lite_raw_features.parquet"
+    )
+    metadata_path = output_dir / "metadata_dataset_filtered_4reps.parquet"
+    step8_filter_cp_profiles(
+        metadata_path=metadata_path,
+        cp_profiles_path=args.profiles,
+        output_path=Path(cp_output),
     )
 
     # ---- Summary ----

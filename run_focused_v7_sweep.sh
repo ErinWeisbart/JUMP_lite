@@ -249,16 +249,16 @@ DL_COMPRESSION_NAMES=(
 )
 
 # Method-specific v7 sweep configs (run sequentially per dataset)
+# spherize_global removed: unreliable on DL embeddings (degenerate results)
 DL_V7_CONFIGS=(
     "focused_dl_v7_none"
     "focused_dl_v7_tvn_efaar"
     "focused_dl_v7_tvn_original"
-    "focused_dl_v7_spherize"
 )
 
 echo "==================================================="
-echo "PART 2: Deep Learning Models (${#DL_FEATURE_FILES[@]} datasets x 224 configs)"
-echo "  Split: 16 (none) + 80 (tvn_efaar) + 64 (tvn_original) + 64 (spherize)"
+echo "PART 2: Deep Learning Models (${#DL_FEATURE_FILES[@]} datasets x 140 configs)"
+echo "  Split: 4 (none) + 120 (tvn_efaar) + 16 (tvn_original)"
 echo "==================================================="
 echo ""
 

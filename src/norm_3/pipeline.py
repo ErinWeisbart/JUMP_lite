@@ -216,7 +216,12 @@ def merge_metadata(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         if common_metadata_cols:
             df = df.drop(common_metadata_cols)
 
-        df = df.join(metadata, on=join_cols, how="left")
+        join_how = config.get("merge_how", "inner")
+        before_join = len(df)
+        df = df.join(metadata, on=join_cols, how=join_how)
+        after_join = len(df)
+        if before_join > after_join:
+            print(f"  Dropped {before_join - after_join} rows not in metadata ({join_how} join)")
 
     # Fill control type
     if "Metadata_control_type" in df.columns:
@@ -1189,6 +1194,7 @@ def evaluate_metrics(df: pl.DataFrame, config: dict) -> pl.DataFrame:
         target_col=config.get("target_col", "Metadata_target_list"),
         negcon_col=config.get("negcon_col", "Metadata_negcon"),
         batch_col=config.get("batch_col", "Metadata_Plate"),
+        pc_groups=config.get("pc_groups", None),
     )
 
     return df

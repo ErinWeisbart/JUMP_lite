@@ -52,27 +52,11 @@ def calculate_phenotypic_activity(
     Returns:
         Dictionary with metrics including per-group summary
     """
+    import pandas as pd
     from copairs import map as copairs_map
-    from copairs.map.average_precision import p_values
     from copairs.matching import assign_reference_index
 
     df_pd = df.to_pandas()
-
-    # Define indexing for copairs
-    if negcon_col in df_pd.columns:
-        df_pd = assign_reference_index(
-            df_pd,
-            f"{negcon_col} == True",
-            reference_col="Metadata_reference_index",
-            default_value=-1,
-        )
-    else:
-        df_pd = assign_reference_index(
-            df_pd,
-            f"{compound_col} == '{negcon_value}'",
-            reference_col="Metadata_reference_index",
-            default_value=-1,
-        )
 
     # Check if group column exists for per-group statistics
     has_groups = group_col in df_pd.columns
@@ -87,22 +71,55 @@ def calculate_phenotypic_activity(
     pos_diffby = []
     neg_diffby = [compound_col, negcon_col, "Metadata_reference_index"]
 
-    metadata = df_pd.filter(regex="^Metadata")
-    profiles = df_pd[features].values
-
-    activity_ap = copairs_map.average_precision(
-        metadata, profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby
-    )
+    # Split by group and compute AP separately per group.
+    # Since group_col is in both pos_sameby and neg_sameby, copairs only
+    # compares within groups. Splitting first avoids the overhead of
+    # processing all 163K rows in a single call.
+    if has_groups:
+        groups = sorted(df_pd[group_col].unique())
+        activity_ap_parts = []
+        for grp in groups:
+            grp_df = df_pd[df_pd[group_col] == grp].copy().reset_index(drop=True)
+            if negcon_col in grp_df.columns:
+                grp_df = assign_reference_index(
+                    grp_df, f"{negcon_col} == True",
+                    reference_col="Metadata_reference_index", default_value=-1,
+                )
+            else:
+                grp_df = assign_reference_index(
+                    grp_df, f"{compound_col} == '{negcon_value}'",
+                    reference_col="Metadata_reference_index", default_value=-1,
+                )
+            grp_meta = grp_df.filter(regex="^Metadata")
+            grp_profiles = grp_df[features].values
+            print(f"  PA {grp}: {len(grp_df)} rows")
+            grp_ap = copairs_map.average_precision(
+                grp_meta, grp_profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby
+            )
+            activity_ap_parts.append(grp_ap)
+        activity_ap = pd.concat(activity_ap_parts, ignore_index=True)
+    else:
+        if negcon_col in df_pd.columns:
+            df_pd = assign_reference_index(
+                df_pd, f"{negcon_col} == True",
+                reference_col="Metadata_reference_index", default_value=-1,
+            )
+        else:
+            df_pd = assign_reference_index(
+                df_pd, f"{compound_col} == '{negcon_value}'",
+                reference_col="Metadata_reference_index", default_value=-1,
+            )
+        metadata = df_pd.filter(regex="^Metadata")
+        profiles = df_pd[features].values
+        activity_ap = copairs_map.average_precision(
+            metadata, profiles, pos_sameby, pos_diffby, neg_sameby, neg_diffby
+        )
 
     # Filter out negative controls
     if negcon_col in activity_ap.columns:
         activity_ap = activity_ap.query(f"{negcon_col} == False").copy()
     else:
         activity_ap = activity_ap.query(f"{compound_col} != '{negcon_value}'").copy()
-
-    # Calculate p-values
-    activity_ap["p_value"] = p_values(activity_ap, null_size=null_size, seed=seed)
-    activity_ap["below_p"] = activity_ap["p_value"] < p_threshold
 
     # Calculate replicate counts per compound (or compound+group)
     replicate_counts = activity_ap.groupby(pos_sameby).size()
@@ -225,6 +242,7 @@ def calculate_phenotypic_consistency(
     target_col: str = "Metadata_target_list",
     negcon_col: str = "Metadata_negcon",
     group_col: str = "Metadata_Group",
+    pc_groups: list[str] | None = None,
 ) -> dict[str, Any]:
     """Calculate Phenotypic Consistency (target-level retrieval).
 
@@ -242,11 +260,18 @@ def calculate_phenotypic_consistency(
         target_col: Column containing target identifier (pipe-separated for multiple)
         negcon_col: Column containing negative control flag
         group_col: Column containing group identifier for per-group statistics
+        pc_groups: If set, only compute PC for these groups (e.g. ["group_high", "group_low"])
 
     Returns:
         Dictionary with metrics including per-group summary
     """
     from copairs import map as copairs_map
+
+    # Filter to specified groups before computing PC
+    if pc_groups and group_col in df.columns:
+        before = len(df)
+        df = df.filter(pl.col(group_col).is_in(pc_groups))
+        print(f"  PC: filtered to groups {pc_groups}: {before} -> {len(df)} rows")
 
     df_pd = df.to_pandas()
 
@@ -267,6 +292,7 @@ def calculate_phenotypic_consistency(
         df_pd.groupby(
             groupby_cols,
             as_index=False,
+            observed=True,
         )[features]
         .median()
         .copy()
@@ -291,9 +317,6 @@ def calculate_phenotypic_consistency(
             "group_summary": None,
         }
 
-    metadata = df_consensus.filter(regex="^Metadata")
-    profiles = df_consensus[features].values
-
     # Include group in sameby columns if groups exist
     if has_groups:
         pos_sameby_target = ["Metadata_target", group_col]
@@ -306,15 +329,35 @@ def calculate_phenotypic_consistency(
     neg_diffby_target = ["Metadata_target"]
 
     try:
-        target_ap = copairs_map.multilabel.average_precision(
-            metadata,
-            profiles,
-            pos_sameby_target,
-            pos_diffby_target,
-            neg_sameby_target,
-            neg_diffby_target,
-            multilabel_col="Metadata_target",
-        )
+        # Split by group for faster copairs computation
+        if has_groups:
+            import pandas as pd
+            groups = sorted(df_consensus[group_col].unique())
+            target_ap_parts = []
+            for grp in groups:
+                grp_df = df_consensus[df_consensus[group_col] == grp].copy().reset_index(drop=True)
+                if len(grp_df) < 2:
+                    continue
+                grp_meta = grp_df.filter(regex="^Metadata")
+                grp_profiles = grp_df[features].values
+                print(f"  PC {grp}: {len(grp_df)} rows")
+                grp_ap = copairs_map.multilabel.average_precision(
+                    grp_meta, grp_profiles,
+                    pos_sameby_target, pos_diffby_target,
+                    neg_sameby_target, neg_diffby_target,
+                    multilabel_col="Metadata_target",
+                )
+                target_ap_parts.append(grp_ap)
+            target_ap = pd.concat(target_ap_parts, ignore_index=True)
+        else:
+            metadata = df_consensus.filter(regex="^Metadata")
+            profiles = df_consensus[features].values
+            target_ap = copairs_map.multilabel.average_precision(
+                metadata, profiles,
+                pos_sameby_target, pos_diffby_target,
+                neg_sameby_target, neg_diffby_target,
+                multilabel_col="Metadata_target",
+            )
 
         target_map = copairs_map.mean_average_precision(
             target_ap,
@@ -381,6 +424,7 @@ def evaluate_all(
     negcon_col: str = "Metadata_negcon",
     batch_col: str = "Metadata_Plate",
     group_col: str = "Metadata_Group",
+    pc_groups: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run all metrics and optionally save results.
 
@@ -394,9 +438,10 @@ def evaluate_all(
         min_compounds_per_target: Minimum compounds required per target for PC
         compound_col: Column for compound identifier
         target_col: Column for target identifier
-        negcon_col: Column for negative control flag
+        negcon_col: Boolean column for negative control flag
         batch_col: Column for batch/plate identifier
         group_col: Column for group identifier (for per-group PA and PC statistics)
+        pc_groups: If set, only compute PC for these groups (e.g. ["group_high", "group_low"])
 
     Returns:
         Dictionary with all metrics including per-group summaries
@@ -451,6 +496,7 @@ def evaluate_all(
             target_col=target_col,
             negcon_col=negcon_col,
             group_col=group_col,
+            pc_groups=pc_groups,
         )
         results["PC"] = pc["pct_targets_active"]
         results["n_targets_active"] = pc["n_targets_active"]
@@ -502,6 +548,7 @@ def evaluate_all(
                     target_col=target_col,
                     negcon_col=negcon_col,
                     group_col=group_col,
+                    pc_groups=pc_groups,
                 )
                 results["PC_replicable"] = pc_rep["pct_targets_active"]
                 results["PC_replicable_n_targets_active"] = pc_rep["n_targets_active"]

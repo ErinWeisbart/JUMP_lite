@@ -403,6 +403,31 @@ FAMILY_HUES = {
 }
 
 
+def _infer_family(model_name: str) -> str | None:
+    """Infer the model family from a model name by prefix matching.
+
+    Handles jump_lite style names like:
+      morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features -> morphem
+      cellprofiler_raw_jump_lite_raw_features -> cellprofiler
+    """
+    # Ordered by specificity (longer prefixes first)
+    PREFIX_TO_FAMILY = [
+        ("cellprofiler", "cellprofiler"),
+        ("openphenom_8bit", "openphenom_8bit"),
+        ("openphenom", "openphenom"),
+        ("morphem", "morphem"),
+        ("subcell", "subcell"),
+        ("dinov2_490", "dinov2_490"),
+        ("dinov2_random", "dinov2_random"),
+        ("dinov2", "dinov2"),
+    ]
+    name_lower = model_name.lower()
+    for prefix, family in PREFIX_TO_FAMILY:
+        if name_lower.startswith(prefix):
+            return family
+    return None
+
+
 def _build_model_colors(models: list[str]) -> dict[str, tuple]:
     """Build a color map giving each model a unique color, grouped by family.
 
@@ -427,9 +452,15 @@ def _build_model_colors(models: list[str]) -> dict[str, tuple]:
             val = 0.6 + 0.4 * (1 - idx / max(n, 1))
             colors[m] = mcolors.hsv_to_rgb([hue, sat, val])
         else:
-            # Fallback: hash-based gray-ish color
-            h = hash(m) % 360 / 360.0
-            colors[m] = mcolors.hsv_to_rgb([h, 0.4, 0.7])
+            # Try to infer family from model name prefix
+            inferred = _infer_family(m)
+            if inferred and inferred in FAMILY_HUES:
+                hue = FAMILY_HUES[inferred]
+                colors[m] = mcolors.hsv_to_rgb([hue, 0.85, 0.85])
+            else:
+                # Fallback: hash-based gray-ish color
+                h = hash(m) % 360 / 360.0
+                colors[m] = mcolors.hsv_to_rgb([h, 0.4, 0.7])
     return colors
 
 
@@ -478,8 +509,18 @@ def parse_model_name(folder_name: str) -> str:
 
 
 def get_display_name(model: str) -> str:
-    """Get short display name for a compression codec."""
-    return COMPRESSION_DISPLAY.get(model, model)
+    """Get short display name for a model/codec."""
+    if model in COMPRESSION_DISPLAY:
+        return COMPRESSION_DISPLAY[model]
+    # Shorten jump_lite model names
+    jump_lite_names = {
+        "cellprofiler_raw_jump_lite_raw_features": "CellProfiler",
+        "morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features": "MorphEm",
+        "subcell_jump_lite_updated_jpegxl_lossy_mq_raw_features": "SubCell",
+        "openphenom_jump_lite_updated_jpegxl_lossy_mq_raw_features": "OpenPhenom",
+        "dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features": "DINOv2",
+    }
+    return jump_lite_names.get(model, model)
 
 
 def sort_models(models: list[str]) -> list[str]:
@@ -497,10 +538,17 @@ def sort_models(models: list[str]) -> list[str]:
             _model_to_key[m] = (fi, _get_codec_sort_rank(m))
 
     n_families = len(MODEL_FAMILIES)
-    return sorted(
-        models,
-        key=lambda m: _model_to_key.get(m, (n_families, _get_codec_sort_rank(m))),
-    )
+
+    def _sort_key(m):
+        if m in _model_to_key:
+            return _model_to_key[m]
+        # Try to infer family for unknown models (e.g. jump_lite names)
+        inferred = _infer_family(m)
+        if inferred and inferred in _family_index:
+            return (_family_index[inferred], _get_codec_sort_rank(m))
+        return (n_families, _get_codec_sort_rank(m))
+
+    return sorted(models, key=_sort_key)
 
 
 def parse_config_name(config_name: str) -> dict:
@@ -666,6 +714,21 @@ def load_metrics(json_path: Path) -> dict:
         "PC_replicable_n_compounds": data.get("PC_replicable_n_compounds"),
     }
 
+    # Flatten per-group summaries into top-level columns
+    # e.g. PA_group_summary.group_orf.pct_active -> PA_group_orf_pct_active
+    for summary_key, prefix in [
+        ("PA_group_summary", "PA"),
+        ("PC_group_summary", "PC"),
+        ("PC_replicable_group_summary", "PC_rep"),
+    ]:
+        group_data = data.get(summary_key)
+        if isinstance(group_data, dict):
+            for group_name, group_stats in group_data.items():
+                if isinstance(group_stats, dict):
+                    for stat_name, stat_value in group_stats.items():
+                        col_name = f"{prefix}_{group_name}_{stat_name}"
+                        metrics[col_name] = stat_value
+
     # Parse config settings
     settings = parse_config_name(config_name)
     metrics.update(settings)
@@ -695,7 +758,8 @@ def _add_best_column(pdf, best_metric="balanced"):
 
     Args:
         pdf: pandas DataFrame (must already have PA, PC columns).
-        best_metric: 'balanced' for PA%*PC%/100, 'nap_balanced' for PA_mean_nap*PC_mean_nap.
+        best_metric: 'balanced' for PA%*PC%/100, 'nap_balanced' for PA_mean_nap*PC_mean_nap,
+                     'pc' for PC%, 'pc_nap' for PC_mean_nap.
 
     Returns:
         (pdf, column_name) where column_name is the column to call idxmax() on.
@@ -710,6 +774,14 @@ def _add_best_column(pdf, best_metric="balanced"):
         else:
             print("Warning: NAP columns not found, falling back to balanced score")
             pdf["_best_score"] = pdf["PA"] * pdf["PC"] / 100
+    elif best_metric == "pc":
+        pdf["_best_score"] = pdf["PC"]
+    elif best_metric == "pc_nap":
+        if "PC_mean_nap" in pdf.columns:
+            pdf["_best_score"] = pdf["PC_mean_nap"]
+        else:
+            print("Warning: PC_mean_nap column not found, falling back to PC%")
+            pdf["_best_score"] = pdf["PC"]
     else:
         pdf["_best_score"] = pdf["PA"] * pdf["PC"] / 100
     return pdf, "_best_score"
@@ -797,7 +869,7 @@ def generate_all_metrics_plot(df: pl.DataFrame, output_dir: Path, model_colors: 
     for i in range(n_metrics, len(axes)):
         axes[i].set_visible(False)
 
-    metric_label = "NAP balanced" if best_metric == "nap_balanced" else "PA*PC"
+    metric_label = {"balanced": "PA*PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}.get(best_metric, best_metric)
     fig.suptitle(f"All Metrics (* = best by {metric_label} per model)", fontsize=16, fontweight="bold", y=1.02)
     plt.tight_layout()
     plt.savefig(output_dir / "sweep_all_metrics.png", dpi=200, bbox_inches="tight")
@@ -868,7 +940,7 @@ def generate_overview_plot(df: pl.DataFrame, output_dir: Path, model_colors: dic
     for i in range(n_metrics, len(axes)):
         axes[i].set_visible(False)
 
-    metric_label = "NAP balanced" if best_metric == "nap_balanced" else "PA*PC"
+    metric_label = {"balanced": "PA*PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}.get(best_metric, best_metric)
     fig.suptitle(f"Overview Metrics (* = best by {metric_label} per model)", fontsize=16, fontweight="bold", y=1.02)
     plt.tight_layout()
     plt.savefig(output_dir / "sweep_overview.png", dpi=150, bbox_inches="tight")
@@ -1399,7 +1471,7 @@ def generate_pa_vs_pc_best_balanced(df: pl.DataFrame, output_dir: Path, model_co
     _add_balanced_score_lines(ax)
     ax.set_xlabel("Phenotypic Consistency (%)", fontsize=14, fontweight="bold")
     ax.set_ylabel("Phenotypic Activity (%)", fontsize=14, fontweight="bold")
-    metric_label = "NAP balanced" if best_metric == "nap_balanced" else "PA*PC"
+    metric_label = {"balanced": "PA*PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}.get(best_metric, best_metric)
     ax.set_title(f"PA vs PC — Best by {metric_label} per Model-Codec", fontsize=16, fontweight="bold")
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -1481,7 +1553,7 @@ def generate_nap_pa_vs_pc_best_balanced(df: pl.DataFrame, output_dir: Path, mode
     _add_balanced_score_lines(ax, is_nap=True)
     ax.set_xlabel("PC Mean NAP", fontsize=14, fontweight="bold")
     ax.set_ylabel("PA Mean NAP", fontsize=14, fontweight="bold")
-    metric_label = "NAP balanced" if best_metric == "nap_balanced" else "PA*PC"
+    metric_label = {"balanced": "PA*PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}.get(best_metric, best_metric)
     ax.set_title(f"Mean NAP: PA vs PC — Best by {metric_label} per Model-Codec", fontsize=16, fontweight="bold")
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -1563,7 +1635,7 @@ def generate_nap_replicable_pa_vs_pc_best_balanced(df: pl.DataFrame, output_dir:
     _add_balanced_score_lines(ax, is_nap=True)
     ax.set_xlabel("PC Replicable Mean NAP", fontsize=14, fontweight="bold")
     ax.set_ylabel("PA Mean NAP", fontsize=14, fontweight="bold")
-    metric_label = "NAP balanced" if best_metric == "nap_balanced" else "PA*PC"
+    metric_label = {"balanced": "PA*PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}.get(best_metric, best_metric)
     ax.set_title(f"Mean NAP: PA vs PC Replicable — Best by {metric_label} per Model-Codec", fontsize=16, fontweight="bold")
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -1644,13 +1716,177 @@ def generate_nap_pa_vs_pc_targets_best_balanced(df: pl.DataFrame, output_dir: Pa
     ax.set_ylim(0, nap_pa_vals.max() * 1.15 if len(nap_pa_vals) > 0 else 0.5)
     ax.set_xlabel("n Targets Active (PC)", fontsize=14, fontweight="bold")
     ax.set_ylabel("PA Mean NAP", fontsize=14, fontweight="bold")
-    metric_label = "NAP balanced" if best_metric == "nap_balanced" else "PA*PC"
+    metric_label = {"balanced": "PA*PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}.get(best_metric, best_metric)
     ax.set_title(f"Mean NAP PA vs n Targets Active — Best by {metric_label} per Model-Codec", fontsize=16, fontweight="bold")
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(output_dir / "sweep_nap_pa_vs_pc_targets_best_balanced.png", dpi=200, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_dir / 'sweep_nap_pa_vs_pc_targets_best_balanced.png'}")
+
+
+def generate_per_group_plot(df: pl.DataFrame, output_dir: Path, model_colors: dict,
+                            best_metric: str = "balanced"):
+    """Per-group PA and PC breakdown for the best config of each model.
+
+    Shows bar charts of pct_active for each group (orf, crispr, high, low)
+    for both PA and PC metrics, plus a scatter of per-group PA vs PC.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pdf = df.to_pandas()
+    pdf, best_col = _add_best_column(pdf, best_metric)
+
+    models = sort_models(pdf["model"].unique().tolist())
+
+    # Get best config per model
+    best_rows = []
+    for model in models:
+        mdf = pdf[pdf["model"] == model]
+        if len(mdf) > 0 and not mdf[best_col].isna().all():
+            bi = mdf[best_col].idxmax()
+            best_rows.append(pdf.loc[bi])
+    if not best_rows:
+        print("No data for per-group plot.")
+        return
+
+    import pandas as pd
+    best = pd.DataFrame(best_rows)
+
+    # Discover which groups are available
+    pa_groups = sorted({
+        col.replace("PA_", "").replace("_pct_active", "")
+        for col in best.columns
+        if col.startswith("PA_group_") and col.endswith("_pct_active")
+    })
+    pc_groups = sorted({
+        col.replace("PC_", "").replace("_pct_active", "")
+        for col in best.columns
+        if col.startswith("PC_group_") and col.endswith("_pct_active")
+        and not col.startswith("PC_rep_")
+    })
+    pc_rep_groups = sorted({
+        col.replace("PC_rep_", "").replace("_pct_active", "")
+        for col in best.columns
+        if col.startswith("PC_rep_") and col.endswith("_pct_active")
+    })
+
+    all_groups = sorted(set(pa_groups) | set(pc_groups) | set(pc_rep_groups))
+    if not all_groups:
+        print("No per-group metrics available, skipping per-group plot.")
+        return
+
+    GROUP_DISPLAY = {
+        "group_crispr": "CRISPR",
+        "group_orf": "ORF",
+        "group_high": "Compounds (high)",
+        "group_low": "Compounds (low)",
+    }
+
+    # --- Figure 1: Grouped bar chart of PA pct_active per group ---
+    n_models = len(best)
+    n_groups = len(pa_groups)
+    if n_groups > 0 and n_models > 0:
+        fig, ax = plt.subplots(figsize=(max(12, n_models * 1.5), 8))
+        x = np.arange(n_models)
+        width = 0.8 / n_groups
+        group_colors = plt.cm.Set2(np.linspace(0, 1, max(n_groups, 3)))
+
+        for i, grp in enumerate(pa_groups):
+            col = f"PA_{grp}_pct_active"
+            vals = best[col].fillna(0).values if col in best.columns else np.zeros(n_models)
+            ax.bar(x + i * width - 0.4 + width / 2, vals, width,
+                   label=GROUP_DISPLAY.get(grp, grp), color=group_colors[i],
+                   edgecolor="black", linewidth=0.5)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels([get_display_name(m) for m in best["model"]], rotation=45, ha="right", fontsize=9)
+        ax.set_ylabel("PA pct_active (%)", fontsize=12, fontweight="bold")
+        ax.set_title("Phenotypic Activity by Group (best config per model)", fontsize=14, fontweight="bold")
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3, axis="y")
+        plt.tight_layout()
+        plt.savefig(output_dir / "sweep_pa_per_group.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved: {output_dir / 'sweep_pa_per_group.png'}")
+
+    # --- Figure 2: Grouped bar chart of PC pct_active per group ---
+    if len(pc_groups) > 0 and n_models > 0:
+        fig, ax = plt.subplots(figsize=(max(12, n_models * 1.5), 8))
+        x = np.arange(n_models)
+        n_pc = len(pc_groups)
+        width = 0.8 / n_pc
+        group_colors = plt.cm.Set2(np.linspace(0, 1, max(n_pc, 3)))
+
+        for i, grp in enumerate(pc_groups):
+            col = f"PC_{grp}_pct_active"
+            vals = best[col].fillna(0).values if col in best.columns else np.zeros(n_models)
+            ax.bar(x + i * width - 0.4 + width / 2, vals, width,
+                   label=GROUP_DISPLAY.get(grp, grp), color=group_colors[i],
+                   edgecolor="black", linewidth=0.5)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels([get_display_name(m) for m in best["model"]], rotation=45, ha="right", fontsize=9)
+        ax.set_ylabel("PC pct_active (%)", fontsize=12, fontweight="bold")
+        ax.set_title("Phenotypic Consistency by Group (best config per model)", fontsize=14, fontweight="bold")
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3, axis="y")
+        plt.tight_layout()
+        plt.savefig(output_dir / "sweep_pc_per_group.png", dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved: {output_dir / 'sweep_pc_per_group.png'}")
+
+    # --- Figure 3: Per-group PA vs PC scatter (one point per model×group) ---
+    scatter_data = []
+    for _, row in best.iterrows():
+        model = row["model"]
+        for grp in all_groups:
+            pa_col = f"PA_{grp}_pct_active"
+            pc_col = f"PC_{grp}_pct_active"
+            pa_val = row.get(pa_col)
+            pc_val = row.get(pc_col)
+            if pa_val is not None and pc_val is not None and not (np.isnan(pa_val) or np.isnan(pc_val)):
+                scatter_data.append({
+                    "model": model,
+                    "group": GROUP_DISPLAY.get(grp, grp),
+                    "PA": pa_val,
+                    "PC": pc_val,
+                })
+
+    if scatter_data:
+        sdf = pd.DataFrame(scatter_data)
+        fig, ax = plt.subplots(figsize=(14, 12))
+        group_markers = {"CRISPR": "^", "ORF": "s", "Compounds (high)": "D", "Compounds (low)": "o"}
+
+        for _, row in sdf.iterrows():
+            model = row["model"]
+            color = model_colors.get(model, (0.5, 0.5, 0.5))
+            marker = group_markers.get(row["group"], "o")
+            ax.scatter(row["PC"], row["PA"], c=[color], s=120, alpha=0.8,
+                       edgecolors="black", linewidths=0.5, marker=marker, zorder=5)
+
+        # Build legend: model colors + group markers
+        from matplotlib.lines import Line2D
+        model_handles = [
+            Line2D([0], [0], marker="o", color="w", markerfacecolor=model_colors.get(m, (0.5, 0.5, 0.5)),
+                   markersize=10, label=get_display_name(m))
+            for m in models if m in sdf["model"].values
+        ]
+        group_handles = [
+            Line2D([0], [0], marker=group_markers.get(g, "o"), color="w", markerfacecolor="gray",
+                   markersize=10, label=g, markeredgecolor="black", markeredgewidth=0.5)
+            for g in sdf["group"].unique()
+        ]
+        ax.legend(handles=model_handles + group_handles, fontsize=9, ncol=2,
+                  loc="upper left", framealpha=0.9)
+
+        ax.set_xlabel("PC pct_active (%)", fontsize=14, fontweight="bold")
+        ax.set_ylabel("PA pct_active (%)", fontsize=14, fontweight="bold")
+        ax.set_title("PA vs PC by Group (best config per model)", fontsize=16, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(output_dir / "sweep_pa_vs_pc_per_group.png", dpi=200, bbox_inches="tight")
+        plt.close()
+        print(f"Saved: {output_dir / 'sweep_pa_vs_pc_per_group.png'}")
 
 
 def generate_best_per_model_plot(df: pl.DataFrame, output_dir: Path, model_colors: dict):
@@ -1797,9 +2033,9 @@ def main():
     )
     parser.add_argument(
         "--best-metric",
-        choices=["balanced", "nap_balanced"],
+        choices=["balanced", "nap_balanced", "pc", "pc_nap"],
         default="balanced",
-        help="Metric for selecting best config: 'balanced' (PA%%*PC%%/100) or 'nap_balanced' (PA_mean_nap*PC_mean_nap)",
+        help="Metric for selecting best config: 'balanced' (PA%%*PC%%/100), 'nap_balanced' (PA_mean_nap*PC_mean_nap), 'pc' (PC%%), or 'pc_nap' (PC_mean_nap)",
     )
     parser.add_argument(
         "--exclude-families",
@@ -1944,7 +2180,8 @@ def main():
     )
     print(batch_summary)
 
-    metric_label = "NAP balanced" if args.best_metric == "nap_balanced" else "PA * PC"
+    _metric_labels = {"balanced": "PA * PC", "nap_balanced": "NAP balanced", "pc": "PC %", "pc_nap": "PC mean NAP"}
+    metric_label = _metric_labels.get(args.best_metric, args.best_metric)
     print(f"\n=== Best Config per Codec (by {metric_label}) ===")
     pdf_tmp = df_plot.to_pandas()
     pdf_tmp, best_col = _add_best_column(pdf_tmp, args.best_metric)
@@ -1978,6 +2215,7 @@ def main():
         generate_norm_pca_plot(df_plot, plot_dir)
         generate_norm_batch_comparison(df_plot, plot_dir)
         generate_best_per_model_plot(df_plot, plot_dir, model_colors)
+        generate_per_group_plot(df_plot, plot_dir, model_colors, best_metric=args.best_metric)
         generate_filtered_vs_raw_plot(df_plot, plot_dir)
         # Degenerate report always uses unfiltered data
         generate_degenerate_report(df, plot_dir)
