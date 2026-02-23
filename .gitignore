@@ -55,6 +55,11 @@ analysis/compression_exploration/presets_pernorm/
 analysis/compression_exploration/presets_tif/
 analysis/image_quality/uv.lock
 
+# sweep
+src/norm_3/multirun/
+src/norm_3/data/
+
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

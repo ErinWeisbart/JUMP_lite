@@ -91,9 +91,9 @@ hydra:
       use_pca: true,false
       batch_method: tvn_efaar,tvn_original,spherize_global,none
       tvn_efaar_epsilon: 0.1,0.25,0.5,1.0,2.0
-      tvn_efaar_n_components: 128,256
-      tvn_original_k: 16,32,64,128,256
-      spherize_epsilon: 0.0001,0.01,0.1,1.0,100.0
+      tvn_efaar_n_components: 128
+      tvn_original_k: 16,32,64,128
+      spherize_epsilon: 0.0001,0.01,0.1,100.0
 
   launcher:
     n_jobs: 32

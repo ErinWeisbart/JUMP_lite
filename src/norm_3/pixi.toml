@@ -33,7 +33,7 @@ copairs = ">=0.5.1"
 
 [activation.env]
 SCIPY_ARRAY_API = "1"
-PYTHONPATH = "/home/jfredinh/projects/JUMP_core/src"
+PYTHONPATH = "${PIXI_PROJECT_ROOT}/.."
 
 [tasks]
 test = "python -m norm_3.tests.test_core_cpu"
