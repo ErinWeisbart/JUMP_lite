@@ -20,12 +20,19 @@ from tqdm import tqdm
 numcodecs.register_codec(Jpegxl)
 
 # dataset = "jump_target2_subset_BR00121438"
-# dataset = "jump_target2_4plate"
+dataset = "jump_target2_4plate"
 # dataset = "jump_core_annotated"
-dataset = "jump_lite_updated"
-datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
+# dataset = "jump_lite_updated"
+# datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
+datasets_path = Path(f"/work/datasets/{dataset}")
+# compression_paths = [
+#     x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_mq")
+# ]
 compression_paths = [
-    x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_mq")
+    x
+    for x in datasets_path.glob("*/")
+    # if x.name.endswith("new.zarr")
+    # or x.name.startswith("jpegxl_lossy_d15")
 ]
 n_devices = 4
 n_addresses = 20
@@ -42,6 +49,7 @@ model_groups_inputs = dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3, 4],
         minmax_8bit=True,
+        standard_scale=False,
     ),  # openphenom
     subcell=dict(
         tile_size=448,
@@ -117,7 +125,7 @@ def process_input_path(
         ipc_addr = ipc_addr.format(f"_{address_id}")
 
         print(f"Formatted ipc address into {ipc_addr}")
-        if setup_params.get("device") == -1:  # TODO formalise this
+        if setup_params.get("device") == -1:
             device_id = hashed_input_int % n_devices
             setup_params["device"] = device_id
             print(f"Selected device {device_id}")
@@ -231,7 +239,7 @@ def process_with_timestamp(
 process_dataset_curried = partial(
     process_with_timestamp,
     dataset_name=dataset,
-    output_basedir=Path("/work/datasets/aliby_output/"),
+    output_basedir=Path("/work/datasets/aliby_output/plate4_rerun_scale_std"),
 )
 
 parameters_combinations = list(
@@ -245,7 +253,7 @@ parameters_combinations = list(
 #     delayed(process_dataset_curried)(x) for x in parameters_combinations
 # )
 
-# for paramset in parameters_combinations:
-#     result = process_dataset_curried(paramset)
+for paramset in parameters_combinations:
+    result = process_dataset_curried(paramset)
 # Clean Nahual server instances to make space for new models
 # subprocess.run("screen -ls | awk -F'.' '/\\S+_[0-9]/ {print $1}' | xargs kill")

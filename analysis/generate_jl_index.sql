@@ -23,6 +23,7 @@ FROM loaddata_uris;
 SET VARIABLE csv_files = (SELECT list(uri) FROM loaddata_uris);
 
 CREATE OR REPLACE TABLE jump_index AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate|Well|Site)$'),COLUMNS('URL_Orig(DNA|Mito|AGP|ER|RNA)')  FROM read_csv(getVariable('csv_files'), union_by_name=True));
+COPY jump_index TO 'jump_index.parquet';
 FROM jump_index;
 
 CREATE OR REPLACE TABLE jump_index_tidy AS (
@@ -41,7 +42,7 @@ FROM jl_index_tidy;
 
 CREATE OR REPLACE TABLE jl_index_sampled AS ( SELECT * EXCLUDE rn FROM (SELECT *, row_number() OVER (PARTITION BY Metadata_Plate,Metadata_Well) as rn FROM jl_index) WHERE rn < 5);
 COPY jl_index_sampled TO 'jl_index_sampled.parquet';
-FROM jl_index_sampled
+FROM jl_index_sampled;
 
 CREATE OR REPLACE TABLE jl_index_sampled_tidy AS (
 UNPIVOT jl_index_sampled On COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
