@@ -1,0 +1,471 @@
+# JUMP_core Reproducibility Guide
+
+Step-by-step instructions to reproduce all analyses, from raw data through final results.
+
+> **Quick start:** If you have `just` installed (provided by the Nix flake), run `just --list` to see all available recipes. Each recipe maps to a step below.
+
+---
+
+## Prerequisites
+
+### 1. Enter the development environment
+
+```bash
+nix develop .
+```
+
+This sets up Python 3.12, uv, pixi, CUDA toolkit, and all system dependencies.
+It also creates `.venv` and runs `uv sync --all-groups`.
+
+### 2. Verify the environment
+
+```bash
+python --version  # Should be 3.12.x
+
+# GPU availability
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}')"
+
+# pixi (needed for norm_3 RAPIDS pipeline)
+pixi --version
+```
+
+### 3. Data paths
+
+| Path | Contents |
+|------|----------|
+| `/work/datasets/jump_target2_4plate/raw/` | Raw 16-bit TIF images (target2, 4 plates) |
+| `/work/datasets/jump_target2_4plate/` | Compressed zarr files |
+| `/work/datasets/aliby_output/` | Feature extraction output tree (per model/dataset/codec) |
+| `data/features/jump_lite/` | Aggregated feature parquets for jump_lite (5 models) |
+| `data/features/jump_target2_4plate/` | Aggregated feature parquets for target2 (CellProfiler, 7 codecs) |
+| `data/features/jump_target2_4plate_cl/` | Aggregated feature parquets for target2 (DL models, 11 codecs) |
+| `metadata/` | Metadata and annotation parquets |
+
+---
+
+## Step 0: Build Metadata Dataset
+
+Generate the unified metadata dataset that maps wells to perturbations, annotations, and quality filters.
+
+```bash
+nix develop . uv run python scripts/build_metadata_dataset.py \
+    --annotations-db /work/datasets/jump_core/annotations/jump_metadata.duckdb \
+    --annotations-cc /work/datasets/jump_core/annotations/annotations_compound_compound.parquet \
+    --annotations-cg /work/datasets/jump_core/annotations/annotations_compound_gene.parquet \
+    --profiles /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet \
+    --refchemdb /home/jfredinh/projects/JUMP_core/metadata/refchemdb_conf_jump_matched.parquet \
+    --output-dir metadata/ \
+    --save-intermediates
+```
+
+**Inputs:**
+
+| Argument | Purpose | Used in |
+|----------|---------|---------|
+| `--annotations-db` | JUMP metadata DuckDB | Step 1 |
+| `--annotations-cc` | Compound-compound annotations parquet | Step 1 |
+| `--annotations-cg` | Compound-gene annotations parquet | Step 1 |
+| `--profiles` | Raw JUMP CellProfiler profiles parquet | Step 5 |
+| `--refchemdb` | RefChemDB target annotations (from `04_refchemdb_match.ipynb`) | Steps 6-7 |
+
+**Output:** `metadata/metadata_dataset_filtered_4reps.parquet` (166K wells with 4+ compound replicates, plus ORF/CRISPR/negcons).
+
+The script runs 8 sequential sub-steps. Use `--skip-to <N>` to resume from a specific step if intermediates were saved.
+
+---
+
+## Step 1: Image Compression
+
+Benchmark compression codecs on raw Cell Painting TIF images.
+
+### 1a. Batch compression (all codecs)
+
+Edit `input_dir` and `output_dir` paths in the script, then:
+
+```bash
+nix develop . uv run python src/compress_tif.py
+```
+
+**Output:**
+- One `{codec_name}.zarr/` directory per codec
+- `results/compression_metrics.csv` — compression/decompression times and file sizes
+- `results/compression_metrics.json`
+
+### 1b. Single codec (CLI)
+
+```bash
+nix develop . uv run python src/compress_tif_single.py \
+    --input /work/datasets/jump_target2_4plate/raw \
+    --output /work/datasets/jump_target2_4plate \
+    --codec jpegxl_lossy_mq \
+    --n-jobs 16
+```
+
+Available codecs: `zstd`, `jpegxl_lossy_hq`, `jpegxl_lossy_mq`, `jpegxl_lossy_lq`, `jpegxl_lossy_effort_3`.
+
+---
+
+## Step 2: Image Quality Assessment
+
+Compute PSNR, SSIM, and LPIPS for compressed images vs. lossless reference.
+
+```bash
+cd analysis/image_quality && uv run python compare_codecs.py \
+    --data-dir /work/datasets/jump_target2_4plate
+```
+
+> This sub-project has its own `pyproject.toml` in `analysis/image_quality/`.
+
+**Output:**
+- `quality_metrics.csv` — per-site per-codec metrics
+
+### 2a. Generate quality figures
+
+Figures are generated automatically with the above command, or regenerated from existing CSV:
+
+```bash
+cd analysis/image_quality && uv run python compare_codecs.py \
+    --data-dir /work/datasets/jump_target2_4plate \
+    --figures-only
+```
+
+**Figures produced:**
+- `quality_metrics_violin.png` — Violin plots for PSNR, SSIM, LPIPS distributions across codecs
+- `ssim_violin.png` — Standalone SSIM violin plot
+
+---
+
+## Step 3: Segmentation Comparison
+
+Compare segmentation masks across compression codecs (IoU, Dice, F1, panoptic quality).
+
+### 3a. Run segmentation comparison
+
+```bash
+nix develop . uv run python analysis/segmentation/compare_segmentations.py \
+    --root /work/datasets/aliby_output/cp_measure/jump_target2_4plate \
+    --ground-truth zstd.zarr \
+    --methods jpegxl_lossy_hq.zarr jpegxl_lossy_mq.zarr jpegxl_lossy_lq.zarr \
+    --both \
+    --fast \
+    --save-mappings
+```
+
+Use `--samples 50` for a quick test run.
+
+**Output:**
+- `segmentation_comparison_segment_cell_detailed.csv`
+- `segmentation_comparison_segment_cell_summary.csv`
+- `segmentation_comparison_segment_nuclei_detailed.csv`
+- `segmentation_comparison_segment_nuclei_summary.csv`
+- `instance_mappings/segment_cell_*.parquet` (if `--save-mappings`)
+
+### 3b. Generate segmentation figures
+
+**IoU/Dice boxplots** (generated automatically by step 3a):
+- `segmentation_comparison_segment_cell_iou_boxplot.png`
+- `segmentation_comparison_segment_cell_dice_boxplot.png`
+- `segmentation_comparison_segment_cell_best_median_worst.png`
+- Same for `_segment_nuclei_` variants
+
+**Combined IoU vs file size plot:**
+
+```bash
+nix develop . uv run python analysis/segmentation/plot_segmentation_iou.py
+```
+
+- Produces `output/codec_segmentation_iou.png`
+
+**Per-cell IoU distributions** (requires `--save-mappings` from step 3a):
+
+```bash
+nix develop . uv run python analysis/segmentation/plot_cell_level_iou.py \
+    --mappings-dir output/segmentation_comparison_with_mapping/instance_mappings
+```
+
+- Produces `segmentation_cell_level_iou_cell_iou_distribution.png`
+- Produces `segmentation_cell_level_iou_nuclei_iou_distribution.png`
+- Produces `segmentation_cell_level_iou_combined_distribution.png`
+
+---
+
+## Step 4: Feature Extraction
+
+Aggregate per-cell feature profiles (from aliby) into well-level parquets.
+
+### 4a. Deep learning embeddings
+
+```bash
+nix develop . uv run python src/extract_features.py \
+    --input /work/datasets/aliby_output \
+    --output data/features/jump_lite/ \
+    --model dinov2 \
+    --compression jpegxl_lossy_mq.zarr
+```
+
+Repeat for each model (`dinov2`, `subcell`, `morphem`, `openphenom`) and codec.
+
+### 4b. CellProfiler features (with size filtering)
+
+```bash
+nix develop . uv run python src/extract_features_with_size_filter.py \
+    --input /work/datasets/aliby_output \
+    --output data/features/jump_lite/ \
+    --model cp_measure \
+    --filter-border-cells \
+    --filter-size
+```
+
+### 4c. Reformat raw CellProfiler profiles
+
+For CellProfiler profiles from the original JUMP dataset (different format):
+
+```bash
+nix develop . uv run python src/reformat_raw_cp_profiles.py \
+    --source /path/to/raw_cp_profiles.parquet \
+    --metadata metadata/metadata_dataset_filtered_4reps.parquet \
+    --output data/features/jump_lite/cellprofiler_raw_jump_lite_raw_features.parquet
+```
+
+### 4d. Feature similarity figures
+
+**CellProfiler feature correlation heatmaps:**
+
+```bash
+nix develop . uv run python analysis/feature_similarity/feature_correlation_cp_measure_script.py
+```
+
+**Correlation vs raw CellProfiler:**
+
+```bash
+nix develop . uv run python analysis/feature_similarity/correlate_vs_raw_cp.py
+```
+
+**Per-cell codec feature comparison** (requires instance mappings from step 3):
+
+```bash
+nix develop . uv run python analysis/feature_similarity/compare_codec_features.py \
+    --mappings-dir output/instance_mappings \
+    --site-level
+```
+
+- Produces `codec_feature_correlation_cell_violin_all.png`
+- Produces `codec_feature_correlation_site_vs_cell_comparison.png`
+
+---
+
+## Step 5: Normalization Pipeline — jump_lite (GPU)
+
+GPU-accelerated normalization of morphological profiles for the jump_lite dataset (5 models, 1 codec each).
+
+### 5a. Single run (test)
+
+```bash
+cd src/norm_3 && pixi run python pipeline.py \
+    +preset=gpu_base_variance_first_v9 \
+    input.path=../../data/features/jump_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet
+```
+
+### 5b. Single sweep config
+
+Run one batch-correction method for one model:
+
+```bash
+cd src/norm_3 && pixi run python pipeline.py --multirun \
+    +sweep=focused_dl_v9_none \
+    input.path=../../data/features/jump_lite/dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet \
+    hydra/launcher=joblib hydra.launcher.n_jobs=4
+```
+
+### 5c. Full v9 sweep (all 5 models, 4 GPUs)
+
+This is the main sweep: ~500 configurations across 5 models on 4 GPUs.
+
+```bash
+bash run_focused_v9_sweep.sh
+```
+
+**GPU assignment:**
+
+| GPU | Models | Configs |
+|-----|--------|---------|
+| 0 | CellProfiler + SubCell | ~100 + ~100 |
+| 1 | MorphEm | ~100 |
+| 2 | OpenPhenom | ~100 |
+| 3 | DINOv2 | ~100 |
+
+**Monitor:**
+
+```bash
+tail -f logs/sweep_v9/*.log
+```
+
+**Quick test (2 GPUs, CP + MorphEm only):**
+
+```bash
+bash run_v9_test_cp_morphem.sh
+```
+
+**Output:**
+- `src/norm_3/data/features/variance_first_v9/{model}/multirun/{sweep}/{config}/output.parquet`
+- `src/norm_3/data/features/variance_first_v9/{model}/multirun/{sweep}/{config}/metrics.json`
+
+### Available feature parquets (jump_lite)
+
+| File | Model |
+|------|-------|
+| `cellprofiler_raw_jump_lite_raw_features.parquet` | CellProfiler |
+| `dinov2_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet` | DINOv2 |
+| `morphem_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet` | MorphEm |
+| `openphenom_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet` | OpenPhenom |
+| `subcell_jump_lite_updated_jpegxl_lossy_mq_raw_features.parquet` | SubCell |
+
+### Available sweep configs (v9)
+
+| Config | Batch correction | Model type |
+|--------|-----------------|------------|
+| `focused_cp_v9_none` | None | CellProfiler |
+| `focused_cp_v9_tvn_efaar` | TVN EFAAR (CORAL) | CellProfiler |
+| `focused_cp_v9_tvn_original` | TVN Original (Caicedo 2017) | CellProfiler |
+| `focused_cp_v9_spherize` | Spherize / ZCA whitening | CellProfiler |
+| `focused_dl_v9_none` | None | DL embeddings |
+| `focused_dl_v9_tvn_efaar` | TVN EFAAR (CORAL) | DL embeddings |
+| `focused_dl_v9_tvn_original` | TVN Original (Caicedo 2017) | DL embeddings |
+| `focused_dl_v9_spherize` | Spherize / ZCA whitening | DL embeddings |
+
+---
+
+## Step 5-target2: Normalization Pipeline — jump_target2 (GPU)
+
+Same normalization pipeline but for the target2 dataset, which covers multiple compression codecs per model. Uses v6 sweep configs.
+
+### Full target2 sweep (sequential, single GPU)
+
+```bash
+bash run_focused_v6_sweep.sh
+```
+
+This runs two parts sequentially:
+
+**Part 1 — CellProfiler (15 datasets x 54 configs = 810 runs):**
+- Raw CP profiles (reformatted) + 7 codecs (raw) + 7 codecs (filtered_border_size)
+- Sweep: `focused_cp_v6` (2 norm x 3 outlier x 3 prune x 3 tvn_eps)
+
+**Part 2 — DL models (110 datasets x ~336 configs):**
+- DINOv2, DINOv2-random, SubCell, MorphEm, OpenPhenom
+- Each across 6-12 JpegXL distance levels
+- Sweep: `focused_dl_v6` (2 norm x 2 fit_ctrl x 2 INT x 2 PCA x 4 batch_method x params)
+
+**Output:** `src/norm_3/data/features/variance_first_v6/{model}/multirun/{sweep}/{config}/metrics.json`
+
+### Single model + codec (target2)
+
+For running a specific target2 model/codec manually:
+
+```bash
+# CellProfiler with zstd on target2
+cd src/norm_3 && pixi run python -m norm_3.pipeline --multirun \
+    +sweep=focused_cp_v6 \
+    input.path=../../data/features/jump_target2_4plate/cp_measure_jump_target2_4plate_zstd_raw_features.parquet \
+    hydra/launcher=joblib hydra.launcher.n_jobs=8
+
+# DINOv2 with mq on target2
+cd src/norm_3 && pixi run python -m norm_3.pipeline --multirun \
+    +sweep=focused_dl_v6 \
+    input.path=../../data/features/jump_target2_4plate_cl/dinov2_jump_target2_4plate_jpegxl_lossy_mq_new_raw_features.parquet \
+    hydra/launcher=joblib hydra.launcher.n_jobs=8
+```
+
+### Available feature parquets (target2 — CellProfiler)
+
+| File | Codec |
+|------|-------|
+| `cp_measure_jump_target2_4plate_zstd_raw_features.parquet` | zstd (lossless) |
+| `cp_measure_jump_target2_4plate_jpegxl_lossy_hq_raw_features.parquet` | JpegXL HQ |
+| `cp_measure_jump_target2_4plate_jpegxl_lossy_effort_3_raw_features.parquet` | JpegXL effort 3 |
+| `cp_measure_jump_target2_4plate_jpegxl_lossy_mq_raw_features.parquet` | JpegXL MQ |
+| `cp_measure_jump_target2_4plate_jpegxl_lossy_lq_raw_features.parquet` | JpegXL LQ |
+| `cp_measure_jump_target2_4plate_jpegxl_lossy_d2_e8_raw_features.parquet` | JpegXL d2 e8 |
+| `cp_measure_jump_target2_4plate_jpegxl_lossy_d10_raw_features.parquet` | JpegXL d10 |
+
+---
+
+## Step 6: Sweep Results Aggregation & Figures
+
+Collect all `metrics.json` from a sweep into a single CSV and generate comparison plots.
+
+### 6a. Aggregate jump_lite results (v9)
+
+```bash
+cd src/norm_3 && pixi run python gather_sweep_results.py \
+    --sweep-dir data/features/variance_first_v9 \
+    --plot \
+    --filter-degenerate
+```
+
+### 6b. Aggregate target2 results (v6)
+
+```bash
+cd src/norm_3 && pixi run python gather_sweep_results.py \
+    --sweep-dir data/features/variance_first_v6 \
+    --plot \
+    --filter-degenerate
+```
+
+### 6c. Figures produced
+
+All plots are saved to `{sweep-dir}/plots/`. Key figures:
+
+| Figure | Description |
+|--------|-------------|
+| `sweep_all_metrics.png` | All metrics comparison across models/codecs |
+| `sweep_overview.png` | Overview of performance across methods |
+| `sweep_pa_vs_pc.png` | Phenotypic Activity vs Phenotypic Consistency scatter |
+| `sweep_pa_vs_pc_targets.png` | PA vs PC with targets highlighted |
+| `sweep_batch_method_comparison.png` | Comparison by batch correction method |
+| `sweep_norm_pca_comparison.png` | Comparison by normalization + PCA settings |
+| `sweep_norm_batch_comparison.png` | Comparison by normalization + batch correction |
+| `sweep_pa_vs_pc_best_balanced.png` | Best config by balanced PA/PC metric |
+| `sweep_nap_pa_vs_pc_best_balanced.png` | NAP balanced best config |
+| `sweep_best_per_model.png` | Best performing configuration per model |
+| `sweep_filtered_vs_raw.png` | Filtered vs raw feature comparison |
+| `sweep_pa_per_group.png` | PA broken down by group |
+| `sweep_pc_per_group.png` | PC broken down by group |
+
+### Additional aggregation options
+
+```bash
+# Select best by different metric
+cd src/norm_3 && pixi run python gather_sweep_results.py \
+    --sweep-dir data/features/variance_first_v9 \
+    --plot \
+    --best-metric nap_balanced
+
+# Exclude specific model families or codecs
+cd src/norm_3 && pixi run python gather_sweep_results.py \
+    --sweep-dir data/features/variance_first_v9 \
+    --plot \
+    --filter-degenerate \
+    --exclude-families dinov2_random \
+    --exclude-codecs d10 d30
+```
+
+---
+
+## Auxiliary
+
+### Compression parameter exploration
+
+Ad-hoc investigation of JPEG XL distance vs effort trade-offs:
+
+```bash
+nix develop . uv run python analysis/compression_exploration/explore.py
+```
+
+### Sphering demo (interactive)
+
+Interactive Marimo notebook demonstrating sphering/whitening:
+
+```bash
+nix develop . uv run marimo run scripts/sphering_demo.py
+```
