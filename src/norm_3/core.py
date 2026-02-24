@@ -94,6 +94,51 @@ def update_spherize_state(ill_conditioned: bool, cond_number: float):
 
 
 # =============================================================================
+# Spherize Truncation State Tracking (module-level for metrics reporting)
+# =============================================================================
+
+_spherize_truncation_method: str | None = None
+_spherize_truncation_k: int | None = None
+_spherize_truncation_input_dims: int | None = None
+_spherize_truncation_variance_removed: float | None = None
+
+
+def reset_spherize_truncation_state():
+    """Reset spherize truncation tracking. Call at start of pipeline."""
+    global _spherize_truncation_method, _spherize_truncation_k
+    global _spherize_truncation_input_dims, _spherize_truncation_variance_removed
+    _spherize_truncation_method = None
+    _spherize_truncation_k = None
+    _spherize_truncation_input_dims = None
+    _spherize_truncation_variance_removed = None
+
+
+def get_spherize_truncation_state():
+    """Get spherize truncation state for metrics reporting."""
+    return {
+        "spherize_truncation_method": _spherize_truncation_method,
+        "spherize_truncation_k": _spherize_truncation_k,
+        "spherize_truncation_input_dims": _spherize_truncation_input_dims,
+        "spherize_truncation_k_pct": (
+            round(_spherize_truncation_k / _spherize_truncation_input_dims * 100, 2)
+            if _spherize_truncation_k is not None and _spherize_truncation_input_dims is not None
+            else None
+        ),
+        "spherize_truncation_variance_removed": _spherize_truncation_variance_removed,
+    }
+
+
+def update_spherize_truncation_state(method: str, k: int, input_dims: int, variance_removed: float):
+    """Record spherize truncation info for metrics."""
+    global _spherize_truncation_method, _spherize_truncation_k
+    global _spherize_truncation_input_dims, _spherize_truncation_variance_removed
+    _spherize_truncation_method = method
+    _spherize_truncation_k = k
+    _spherize_truncation_input_dims = input_dims
+    _spherize_truncation_variance_removed = variance_removed
+
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -251,6 +296,9 @@ class Spherize:
         method: str = "ZCA-cor",
         epsilon: float = 1e-6,
         center: bool = True,
+        remove_variance_threshold: float | None = None,
+        remove_variance_method: str = "threshold",
+        n_permutations: int = 10,
     ):
         """Initialize Spherize.
 
@@ -258,15 +306,32 @@ class Spherize:
             method: Whitening method (ZCA, PCA, ZCA-cor, PCA-cor)
             epsilon: Regularization for numerical stability
             center: Whether to center data (default True)
+            remove_variance_threshold: If set, remove top k PCs that explain
+                this fraction of variance (e.g. 0.80 = remove 80%), projecting
+                onto remaining dims. Reduces dimensionality.
+                Ignored when remove_variance_method="mp" or "pa".
+            remove_variance_method: How to determine k PCs to remove:
+                - "threshold": remove top k PCs covering threshold% of variance
+                - "mp": Marchenko-Pastur — remove PCs whose eigenvalues exceed
+                  the analytical upper edge of the random noise distribution
+                - "pa": Parallel analysis — permute each column independently,
+                  compute SVD on shuffled data, find where real singular values
+                  drop below the random maximum envelope
+            n_permutations: Number of permutations for parallel analysis (default 10)
         """
         self.method = method
         self.epsilon = epsilon
         self.center = center
+        self.remove_variance_threshold = remove_variance_threshold
+        self.remove_variance_method = remove_variance_method
+        self.n_permutations = n_permutations
         self.W_: cp.ndarray | None = None
         self.mean_: cp.ndarray | None = None
         self.std_: cp.ndarray | None = None
         self.ill_conditioned_: bool = False
         self.condition_number_: float | None = None
+        self.k_removed_: int | None = None
+        self.variance_removed_: float | None = None
 
     def fit(self, X: cp.ndarray) -> "Spherize":
         """Compute whitening matrix via SVD.
@@ -299,6 +364,87 @@ class Spherize:
         # This causes W to have shape (n_features, n_samples), reducing dimensionality.
         # We need to pad W to (n_features, n_features) to preserve dimensionality.
         rank = len(Sigma)  # Actual rank = min(n_samples, n_features)
+
+        # Truncated projection: remove top k PCs based on chosen method
+        do_truncation = (
+            self.remove_variance_method in ("mp", "pa")
+            or (self.remove_variance_method == "threshold" and self.remove_variance_threshold is not None)
+        )
+        if do_truncation:
+            eigenvalues = Sigma ** 2
+
+            if self.remove_variance_method == "pa":
+                # Parallel analysis: shuffle each column independently to destroy
+                # correlations, compute SVD on permuted data, track element-wise
+                # max singular value across permutations. k = first index where
+                # real singular value drops below the random envelope.
+                Xr = X_work.copy()
+                Sr_max = cp.zeros(rank)
+                for perm_i in range(self.n_permutations):
+                    # Shuffle each column independently
+                    for col in range(n_features):
+                        idx = cp.random.permutation(n_samples)
+                        Xr[:, col] = X_work[idx, col]
+                    Si = cp.linalg.svd(Xr, compute_uv=False)
+                    Sr_max = cp.maximum(Sr_max, Si)
+                # Find crossover: first index where real S drops below random max
+                crossover = cp.argwhere(Sigma <= Sr_max)
+                if len(crossover) > 0:
+                    k = int(crossover[0, 0])
+                else:
+                    k = rank  # All singular values exceed random — no truncation
+                print(f"  PA: {self.n_permutations} permutations, k={k} signal PCs "
+                      f"(of {rank}), top_S={float(Sigma[0]):.2f}, random_max={float(Sr_max[0]):.2f}")
+                if k == 0:
+                    print(f"  PA: k=0, no signal PCs found, falling through to full spherize")
+                elif k >= rank:
+                    print(f"  PA: all PCs are signal, falling through to full spherize")
+                    k = 0  # Signal "no truncation"
+                else:
+                    k = min(k, rank - 1)  # Keep at least 1 component
+
+            elif self.remove_variance_method == "mp":
+                # Marchenko-Pastur: remove PCs whose eigenvalues exceed the
+                # analytical upper edge of the noise distribution.
+                # For standardized data (ZCA-cor/PCA-cor), population noise
+                # eigenvalue is 1, so lambda_+ = (1 + sqrt(p/n))^2.
+                gamma = float(n_features) / float(n_samples)
+                # Normalize eigenvalues to per-sample scale (like np.cov)
+                eig_scaled = eigenvalues / (n_samples - 1)
+                mp_upper = (1.0 + cp.sqrt(cp.array(gamma))) ** 2
+                k = int(cp.sum(eig_scaled > mp_upper))
+                print(f"  MP: gamma={gamma:.4f}, upper_edge={float(mp_upper):.4f}, "
+                      f"k={k} signal PCs, top_eig={float(eig_scaled[0]):.4f}")
+                if k == 0:
+                    # No eigenvalues exceed MP upper edge — skip truncation
+                    print(f"  MP: no eigenvalues exceed upper edge, falling through to full spherize")
+                else:
+                    k = min(k, rank - 1)  # Keep at least 1 component
+            else:
+                # Variance threshold method
+                cumvar = cp.cumsum(eigenvalues) / cp.sum(eigenvalues)
+                k = int(cp.searchsorted(cumvar, cp.array(self.remove_variance_threshold))) + 1
+                k = min(k, rank - 1)  # Keep at least 1 component
+
+            if k > 0:
+                self.k_removed_ = k
+                cumvar = cp.cumsum(eigenvalues) / cp.sum(eigenvalues)
+                self.variance_removed_ = float(cumvar[k - 1])
+
+                # Record truncation state for metrics reporting
+                update_spherize_truncation_state(
+                    method=self.remove_variance_method,
+                    k=k,
+                    input_dims=int(n_features),
+                    variance_removed=self.variance_removed_,
+                )
+
+                # Project onto remaining p-k dims (drop top k PCs)
+                W = Vt[k:].T  # shape (n_features, rank-k)
+
+                self.W_ = W
+                update_spherize_state(False, 0.0)
+                return self
 
         # Check condition number (ratio of largest to smallest singular value)
         sigma_min = float(Sigma[-1])

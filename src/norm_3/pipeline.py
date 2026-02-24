@@ -46,6 +46,7 @@ from norm_3.core import (
     include_features,
     include_from_csv,
     reset_spherize_state,
+    reset_spherize_truncation_state,
     reset_tvn_state,
     tvn_efaar_on_controls,
     variance_threshold,
@@ -939,9 +940,37 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
     control_col = config.get("control_col", "Metadata_control_type")
     control_key = config.get("control_key", "negcon")
 
+    remove_variance_threshold = config.get("remove_variance_threshold")
+    remove_variance_method = config.get("remove_variance_method", "threshold")
+    n_permutations = config.get("n_permutations", 10)
+
     is_global = not batch_col
     scope_str = "GLOBAL (all plates)" if is_global else f"per-batch ({batch_col})"
     print(f"  method: {method}, scope: {scope_str}, fit_on_controls: {fit_on_controls}, epsilon: {epsilon}")
+    if remove_variance_method == "pa":
+        print(f"  remove_variance_method: pa (parallel analysis, {n_permutations} permutations)")
+    elif remove_variance_method == "mp":
+        print(f"  remove_variance_method: mp (Marchenko-Pastur truncation)")
+    elif remove_variance_threshold is not None:
+        print(f"  remove_variance_threshold: {remove_variance_threshold} (truncated projection)")
+
+    def _build_spherize():
+        return Spherize(method=method, epsilon=epsilon,
+                        remove_variance_threshold=remove_variance_threshold,
+                        remove_variance_method=remove_variance_method,
+                        n_permutations=n_permutations)
+
+    def _rebuild_df_truncated(df_in, features_in, X_norm, spherize_obj):
+        """Rebuild DataFrame with new feature names when dims are reduced."""
+        k = spherize_obj.k_removed_
+        n_out = X_norm.shape[1]
+        print(f"  Removed top {k} PCs ({spherize_obj.variance_removed_*100:.1f}% variance), {n_out} dims remaining")
+        new_features = [f"Spherize_{i}" for i in range(n_out)]
+        metadata_cols = [c for c in df_in.columns if c not in features_in]
+        result = df_in.select(metadata_cols)
+        for i, feat in enumerate(new_features):
+            result = result.with_columns(pl.Series(name=feat, values=X_norm[:, i]))
+        return result
 
     with GPUMemoryManager() as gpu:
         if batch_col and batch_col in df.columns:
@@ -952,7 +981,7 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
                 batch_df = df.filter(batch_mask)
                 X = gpu.transfer(batch_df.select(features).to_numpy())
 
-                spherize = Spherize(method=method, epsilon=epsilon)
+                spherize = _build_spherize()
                 if fit_on_controls and control_col in df.columns:
                     control_mask = batch_df[control_col] == control_key
                     X_fit = X[control_mask.to_numpy()]
@@ -964,22 +993,22 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
                 else:
                     X_norm = to_cpu(spherize.fit_transform(X))
 
-                # DEBUG: Check dimensions before creating Series
-                print(f"  DEBUG batch={batch}: len(features)={len(features)}, X.shape={X.shape}, X_norm.shape={X_norm.shape}")
-                if X_norm.shape[1] != len(features):
-                    print(f"  ERROR: Dimension mismatch! features has {len(features)} elements but X_norm has {X_norm.shape[1]} columns")
-                    raise ValueError(f"Spherize dimension mismatch: {len(features)} features != {X_norm.shape[1]} columns")
-
-                batch_df = batch_df.with_columns(
-                    [pl.Series(name=feat, values=X_norm[:, i]) for i, feat in enumerate(features)]
-                )
+                if spherize.k_removed_ is not None:
+                    batch_df = _rebuild_df_truncated(batch_df, features, X_norm, spherize)
+                else:
+                    print(f"  DEBUG batch={batch}: len(features)={len(features)}, X.shape={X.shape}, X_norm.shape={X_norm.shape}")
+                    if X_norm.shape[1] != len(features):
+                        raise ValueError(f"Spherize dimension mismatch: {len(features)} features != {X_norm.shape[1]} columns")
+                    batch_df = batch_df.with_columns(
+                        [pl.Series(name=feat, values=X_norm[:, i]) for i, feat in enumerate(features)]
+                    )
                 normalized_dfs.append(batch_df)
 
             df = pl.concat(normalized_dfs)
         else:
             # Global spherize: process all plates together (JUMP recipe approach)
             X = gpu.transfer(df.select(features).to_numpy())
-            spherize = Spherize(method=method, epsilon=epsilon)
+            spherize = _build_spherize()
 
             if fit_on_controls and control_col in df.columns:
                 control_mask = df[control_col] == control_key
@@ -999,17 +1028,15 @@ def normalize_spherize(df: pl.DataFrame, config: dict) -> pl.DataFrame:
                 print(f"  Global spherize: fitting on all {X.shape[0]} samples, {X.shape[1]} features")
                 X_norm = to_cpu(spherize.fit_transform(X))
 
-            # DEBUG: Check dimensions before creating Series
-            print(f"  DEBUG: len(features)={len(features)}, X.shape={X.shape}, X_norm.shape={X_norm.shape}")
-            if X_norm.shape[1] != len(features):
-                print(f"  ERROR: Dimension mismatch! features has {len(features)} elements but X_norm has {X_norm.shape[1]} columns")
-                print(f"  First 5 features: {features[:5]}")
-                print(f"  Last 5 features: {features[-5:]}")
-                raise ValueError(f"Spherize dimension mismatch: {len(features)} features != {X_norm.shape[1]} columns")
-
-            df = df.with_columns(
-                [pl.Series(name=feat, values=X_norm[:, i]) for i, feat in enumerate(features)]
-            )
+            if spherize.k_removed_ is not None:
+                df = _rebuild_df_truncated(df, features, X_norm, spherize)
+            else:
+                print(f"  DEBUG: len(features)={len(features)}, X.shape={X.shape}, X_norm.shape={X_norm.shape}")
+                if X_norm.shape[1] != len(features):
+                    raise ValueError(f"Spherize dimension mismatch: {len(features)} features != {X_norm.shape[1]} columns")
+                df = df.with_columns(
+                    [pl.Series(name=feat, values=X_norm[:, i]) for i, feat in enumerate(features)]
+                )
 
     print(f"  Result: {df.shape}")
     return df
@@ -1280,7 +1307,18 @@ def generate_output_name(config: dict) -> str:
             else:
                 eps_str = f"e{epsilon}"
             scope = "_global" if is_global else ""
-            parts.append(method + scope + ("_ctrl" if fit_ctrl else "_all") + f"_{eps_str}")
+            name = method + scope + ("_ctrl" if fit_ctrl else "_all") + f"_{eps_str}"
+            rvm = params.get("remove_variance_method", "threshold")
+            if rvm == "pa":
+                n_perm = params.get("n_permutations", 10)
+                name += f"_truncPA{n_perm}"
+            elif rvm == "mp":
+                name += "_truncMP"
+            else:
+                rvt = params.get("remove_variance_threshold")
+                if rvt is not None:
+                    name += f"_trunc{rvt}"
+            parts.append(name)
         elif step_name == "filter_features":
             # Add filter config to output name
             filters = params.get("filters", [])
@@ -1359,6 +1397,12 @@ def apply_sweep_overrides(config: dict) -> dict:
                 step["params"]["epsilon"] = config["spherize_epsilon"]
             if "spherize_fit_controls" in config:
                 step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
+            if "spherize_remove_variance_threshold" in config:
+                step["params"]["remove_variance_threshold"] = config["spherize_remove_variance_threshold"]
+            if "spherize_remove_variance_method" in config:
+                step["params"]["remove_variance_method"] = config["spherize_remove_variance_method"]
+            if "spherize_n_permutations" in config:
+                step["params"]["n_permutations"] = config["spherize_n_permutations"]
 
         # Handle step enable/disable flags
         if step_name == "normalize_spherize" and "use_spherize" in config:
@@ -1430,17 +1474,24 @@ def apply_sweep_overrides(config: dict) -> dict:
                 step["params"]["method"] = config["spherize_method"]
             if "spherize_epsilon" in config:
                 step["params"]["epsilon"] = config["spherize_epsilon"]
+            if "spherize_remove_variance_threshold" in config:
+                step["params"]["remove_variance_threshold"] = config["spherize_remove_variance_threshold"]
+            if "spherize_remove_variance_method" in config:
+                step["params"]["remove_variance_method"] = config["spherize_remove_variance_method"]
+            if "spherize_n_permutations" in config:
+                step["params"]["n_permutations"] = config["spherize_n_permutations"]
             if batch_method == "spherize_global":
                 # JUMP recipe: global scope (all plates), fit on controls only
                 step["params"]["batch_col"] = ""
                 step["params"]["fit_on_controls"] = True
+            elif batch_method == "spherize":
+                # Per-batch spherize: use Metadata_Batch as batch scope
+                step["params"]["batch_col"] = "Metadata_Batch"
+                if "spherize_fit_controls" in config:
+                    step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
             else:
                 if "spherize_fit_controls" in config:
                     step["params"]["fit_on_controls"] = config["spherize_fit_controls"]
-                # Per-batch spherize: force fit on all data when PCA is off
-                # (too few controls per plate for high-dim covariance)
-                if batch_method == "spherize" and not config.get("use_pca", False):
-                    step["params"]["fit_on_controls"] = False
 
         elif step_name == "normalize_pca":
             if "pca_n_components" in config:
@@ -1488,12 +1539,6 @@ def is_redundant_config(config: dict) -> tuple[bool, str | None]:
     use_pca = config.get("use_pca", False)
     batch_method = config.get("batch_method", "none")
 
-    # Spherize without PCA is numerically degenerate on high-dimensional features.
-    # ZCA whitening on 750+ features produces near-uniform isotropic noise (PC1_var ≈ 1/n_features),
-    # which inflates PA artificially while PC stays low.
-    if batch_method == "spherize" and not use_pca:
-        return True, "batch_method=spherize + use_pca=false is degenerate (spherize on 750+ features → isotropic noise)"
-
     # TVN/TVN_EFAAR + spherize is redundant - TVN already does covariance alignment
     # via CORAL, so adding spherize on top is unnecessary and potentially harmful
     if batch_method in ("tvn", "tvn_efaar") and use_spherize:
@@ -1518,12 +1563,26 @@ def is_redundant_config(config: dict) -> tuple[bool, str | None]:
         spherize_fit_controls = config.get("spherize_fit_controls", False)
         if spherize_fit_controls != False:
             return True, f"batch_method={batch_method} ignores spherize_fit_controls={spherize_fit_controls}"
+        spherize_rvt = config.get("spherize_remove_variance_threshold")
+        if spherize_rvt is not None:
+            return True, f"batch_method={batch_method} ignores spherize_remove_variance_threshold={spherize_rvt}"
+        spherize_rvm = config.get("spherize_remove_variance_method", "threshold")
+        if spherize_rvm != "threshold":
+            return True, f"batch_method={batch_method} ignores spherize_remove_variance_method={spherize_rvm}"
+
+    # When remove_variance_method=mp or pa, threshold values don't matter (k is determined automatically)
+    if batch_method in ("spherize", "spherize_global"):
+        spherize_rvm = config.get("spherize_remove_variance_method", "threshold")
+        if spherize_rvm in ("mp", "pa"):
+            spherize_rvt = config.get("spherize_remove_variance_threshold")
+            if spherize_rvt is not None:
+                return True, f"spherize_remove_variance_method={spherize_rvm} ignores threshold={spherize_rvt}"
 
     # When use_pca=false, pca params don't matter
     # Accept both 64 and 128 as valid defaults (different sweeps)
     if not use_pca and batch_method != "tvn":
         pca_n_components = config.get("pca_n_components", 64)
-        if pca_n_components not in (64, 128):
+        if pca_n_components not in (64, 128, 256):
             return True, f"use_pca=false ignores pca_n_components={pca_n_components}"
 
     # When use_prune_correlated=false AND prune step isn't always_enabled, corr_thresh doesn't matter
@@ -1632,6 +1691,7 @@ def run_pipeline(
     # Reset TVN and Spherize state
     reset_tvn_state()
     reset_spherize_state()
+    reset_spherize_truncation_state()
 
     # Input path
     if input_override:
@@ -1665,14 +1725,81 @@ def run_pipeline(
     print(f"Output directory: {output_dir}")
     print()
 
-    # Load input
-    print(f"Loading: {input_path}")
-    df = load_profiles(input_path)
-    print(f"Initial shape: {df.shape}")
+    # === Intermediate caching for sweep speedup ===
+    # When sweeping many configs, early pipeline steps are identical.
+    # Cache at two boundaries to avoid redundant computation:
+    #   early: after merge_metadata (load + NaN + variance + merge)
+    #   mid:   after prune_correlated (+ normalize + outlier + INT + corr prune)
+    _use_cache = config.get("use_pipeline_cache", True)
+    _cache_resume_after = None
+    _early_cache_path = None
+    _mid_cache_path = None
+
+    if _use_cache:
+        import hashlib
+
+        _cache_dir = base_output_path.parent / input_name / ".pipeline_cache"
+        _cache_dir.mkdir(exist_ok=True, parents=True)
+
+        # Input identity: path + modification time (detects regenerated files)
+        _input_mtime = int(input_path.stat().st_mtime) if input_path.exists() else 0
+        _input_id = hashlib.md5(f"{input_path}|{_input_mtime}".encode()).hexdigest()[:12]
+
+        # Early cache: after merge_metadata (identical for all configs)
+        _early_cache_path = _cache_dir / f"after_merge_{_input_id}.parquet"
+
+        # Mid cache: after prune_correlated (varies by normalization variant)
+        _nm = config.get("norm_method", "robustmad")
+        _nf = config.get("norm_fit_controls", True)
+        _ui = config.get("use_int", False)
+        _oc = config.get("outlier_cutoff", 500)
+        _ct = config.get("corr_thresh", 0.9)
+        _mid_tag = f"{_nm}_{'ctrl' if _nf else 'all'}"
+        if _oc is not None:
+            _mid_tag += f"_out{_oc}"
+        if _ui:
+            _mid_tag += "_INT"
+        if _ct is not None:
+            _mid_tag += f"_corr{_ct}"
+        _mid_cache_path = _cache_dir / f"after_prune_{_input_id}_{_mid_tag}.parquet"
+
+        # Try to load from cache (prefer mid > early)
+        # Validate on load — delete corrupt cache files
+        if _mid_cache_path.exists():
+            try:
+                df = load_profiles(_mid_cache_path)
+                print(f"[CACHE HIT] {_mid_cache_path.name} ({df.shape[0]}×{df.shape[1]})")
+                _cache_resume_after = "prune_correlated"
+            except Exception as e:
+                print(f"[CACHE] Corrupt mid cache, deleting: {e}")
+                _mid_cache_path.unlink(missing_ok=True)
+        if _cache_resume_after is None and _early_cache_path.exists():
+            try:
+                df = load_profiles(_early_cache_path)
+                print(f"[CACHE HIT] {_early_cache_path.name} ({df.shape[0]}×{df.shape[1]})")
+                _cache_resume_after = "merge_metadata"
+            except Exception as e:
+                print(f"[CACHE] Corrupt early cache, deleting: {e}")
+                _early_cache_path.unlink(missing_ok=True)
+
+    if _cache_resume_after is None:
+        # No cache — load from scratch
+        print(f"Loading: {input_path}")
+        df = load_profiles(input_path)
+        print(f"Initial shape: {df.shape}")
 
     # Run steps
+    _past_resume_point = (_cache_resume_after is None)
     for step_config in config.get("steps", []):
         step_name = step_config.get("name", "unknown")
+
+        # Skip steps already covered by intermediate cache
+        if not _past_resume_point:
+            if step_name == _cache_resume_after:
+                _past_resume_point = True
+            if step_config.get("enabled", True):
+                print(f"  [CACHE] Skipping: {step_name}")
+            continue
 
         if not step_config.get("enabled", True):
             print(f"\nSkipping: {step_name}")
@@ -1725,6 +1852,28 @@ def run_pipeline(
             )
             if not is_valid:
                 return float("inf")
+
+        # Save intermediate cache after key steps (atomic write, per-PID temp file)
+        if _use_cache:
+            _cache_target = None
+            if step_name == "merge_metadata" and _early_cache_path and not _early_cache_path.exists():
+                _cache_target = _early_cache_path
+            elif step_name == "prune_correlated" and _mid_cache_path and not _mid_cache_path.exists():
+                _cache_target = _mid_cache_path
+            if _cache_target is not None:
+                try:
+                    import os
+                    _tmp = _cache_target.with_suffix(f".{os.getpid()}.tmp")
+                    save_profiles(df, _tmp)
+                    _tmp.rename(_cache_target)
+                    print(f"  [CACHE] Saved: {_cache_target.name} ({df.shape[0]}×{df.shape[1]})")
+                except Exception as e:
+                    # Clean up orphaned temp file
+                    try:
+                        _tmp.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    print(f"  [CACHE] Warning: {e}")
 
     # Save output
     print(f"\nSaving to: {output_path}")

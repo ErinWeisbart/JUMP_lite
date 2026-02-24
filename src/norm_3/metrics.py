@@ -592,6 +592,16 @@ def evaluate_all(
     if tvn_ill_conditioned:
         print(f"  WARNING: TVN encountered ill-conditioned matrix (condition number: {tvn_max_condition_number:.2e})")
 
+    # Add spherize truncation state
+    from norm_3.core import get_spherize_truncation_state
+    trunc_state = get_spherize_truncation_state()
+    results.update(trunc_state)
+    if trunc_state["spherize_truncation_k"] is not None:
+        print(f"  Spherize truncation: method={trunc_state['spherize_truncation_method']}, "
+              f"k={trunc_state['spherize_truncation_k']}/{trunc_state['spherize_truncation_input_dims']} "
+              f"({trunc_state['spherize_truncation_k_pct']:.1f}%), "
+              f"variance_removed={trunc_state['spherize_truncation_variance_removed']*100:.1f}%")
+
     # Compute PCA variance (PC1 and PC2 explained variance)
     try:
         from norm_3.core import PCATransform
