@@ -19,12 +19,13 @@ from tqdm import tqdm
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
 
-# dataset = "jump_target2_subset_BR00121438"
-dataset = "jump_target2_4plate"
-# dataset = "jump_core_annotated"
-# dataset = "jump_lite_updated"
-# datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
-datasets_path = Path(f"/work/datasets/{dataset}")
+# dataset = "jump_target2_4plate"
+# datasets_path = Path(f"/work/datasets/{dataset}")
+# out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std")
+dataset = "jump_lite_updated"
+datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
+out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
+
 # compression_paths = [
 #     x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_mq")
 # ]
@@ -124,7 +125,7 @@ def process_input_path(
         address_id = hashed_input_int % n_addresses
         ipc_addr = ipc_addr.format(f"_{address_id}")
 
-        print(f"Formatted ipc address into {ipc_addr}")
+        # print(f"Formatted ipc address into {ipc_addr}")
         if setup_params.get("device") == -1:
             device_id = hashed_input_int % n_devices
             setup_params["device"] = device_id
@@ -142,6 +143,7 @@ def process_input_path(
             "tile_size": model_params["tile_size"],
             "calculate_drift": False,
             "minmax_8bit": model_params.get("minmax_8bit", False),
+            "standard_scale": model_params.get("standard_scale", True),
         },
     }
     embed_params = dict(
@@ -203,7 +205,7 @@ def process_with_timestamp(
     assert len(input_paths), "No files found in input dataset"
     if __name__ == "__main__":  # Add logging
         timestamp = strftime("%s%m%d%H%M")
-        output_path = output_basedir / model_name / dataset_name / compression_dir.name
+        output_path = output_basedir / dataset_name / model_name / compression_dir.name
 
         logger.remove()
         logger.add(output_path / f"{timestamp}_{dataset_name}_{model_name}.log")
@@ -239,7 +241,7 @@ def process_with_timestamp(
 process_dataset_curried = partial(
     process_with_timestamp,
     dataset_name=dataset,
-    output_basedir=Path("/work/datasets/aliby_output/plate4_rerun_scale_std"),
+    output_basedir=out_dir,
 )
 
 parameters_combinations = list(
