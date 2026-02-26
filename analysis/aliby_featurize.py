@@ -19,6 +19,7 @@ from tqdm import tqdm
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
 
+threaded = True
 # dataset = "jump_target2_4plate"
 # datasets_path = Path(f"/work/datasets/{dataset}")
 # out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std")
@@ -32,7 +33,7 @@ out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
 compression_paths = [
     x
     for x in datasets_path.glob("*/")
-    # if x.name.endswith("new.zarr")
+    if x.name.endswith("mq.zarr")
     # or x.name.startswith("jpegxl_lossy_d15")
 ]
 n_devices = 4
@@ -41,6 +42,7 @@ n_addresses = 20
 # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # These tell us when to pad or select channels to match the models
 # model_group -> (tile_size, channels)
+# Channels are ordered alphabetically (AGP, DNA, ER, Mito, RNA)
 model_groups_inputs = dict(
     dinov2=dict(
         tile_size=224,
@@ -49,12 +51,12 @@ model_groups_inputs = dict(
     openphenom=dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3, 4],
-        minmax_8bit=True,
+        clip_8bit=True,
         standard_scale=False,
     ),  # openphenom
     subcell=dict(
         tile_size=448,
-        selected_channels=[0, 1, 2, 3],
+        selected_channels=[3, 2, 1, 0],
     ),
     morphem=dict(
         tile_size=224,
@@ -64,11 +66,6 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    openphenom=dict(
-        model_group="openphenom",
-        model_name="recursionpharma/OpenPhenom",
-        device=-1,
-    ),
     morphem=dict(
         model_group="morphem",
         model_name="CaicedoLab/MorphEm",
@@ -86,6 +83,18 @@ model_setup_params = dict(
         model_channels="rybg",
         device=-1,
     ),
+    # subcell__nonstd=dict(
+    #     model_group="subcell",
+    #     model_type="mae_contrast_supcon_model",
+    #     model_channels="rybg",
+    #     device=-1,
+    # ),
+    openphenom=dict(
+        model_group="openphenom",
+        model_name="recursionpharma/OpenPhenom",
+        device=-1,
+        standard_scale=False,
+    ),
     dinov2_random=dict(
         model_group="dinov2",
         repo_or_dir="facebookresearch/dinov2",
@@ -101,7 +110,7 @@ model_params = {
             # "setup_params": model_setup_params.get(model_name, {}),
             "model_group": v.pop("model_group"),
             "setup_params": v,
-            "address": f"ipc:///tmp/{model_name}{{}}.ipc",
+            "address": f"ipc:///tmp/{model_name.split('__')[0]}{{}}.ipc",  # ignore stuff after `__`. Allows reusing nahual instances.
         },
     }
     for i, (model_name, v) in enumerate(model_setup_params.items())
@@ -142,7 +151,7 @@ def process_input_path(
             "kind": "crop",
             "tile_size": model_params["tile_size"],
             "calculate_drift": False,
-            "minmax_8bit": model_params.get("minmax_8bit", False),
+            "clip_8bit": model_params.get("clip_8bit", False),
             "standard_scale": model_params.get("standard_scale", True),
         },
     }
@@ -171,16 +180,16 @@ def process_input_path(
         "save_interval": 1,
     }
 
-    # try:
-    result, _ = run_pipeline_and_post(
-        pipeline=base_pipeline,
-        img_source=input_path,
-        output_path=output_path,
-        fov=input_path["key"],
-        overwrite=False,
-    )
-    # except Exception as e:
-    #     print(f"Error: {e}")
+    try:
+        result, _ = run_pipeline_and_post(
+            pipeline=base_pipeline,
+            img_source=input_path,
+            output_path=output_path,
+            fov=input_path["key"],
+            overwrite=False,
+        )
+    except Exception as e:
+        logger.error(e)
 
 
 # %%
@@ -225,7 +234,7 @@ def process_with_timestamp(
         model_params=model_params,
     )
     # Thread or not
-    if True:
+    if threaded:
         with Pool() as p:
             result = p.map(process_input_path_curried, input_paths.values())
     else:
