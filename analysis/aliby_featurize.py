@@ -19,7 +19,7 @@ from tqdm import tqdm
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
 
-threaded = False
+threaded = True
 n_devices = 4
 n_addresses = 20
 capture_order = "CYX"
@@ -29,7 +29,7 @@ input_dimensions = None
 # 4 plates
 # dataset = "jump_target2_4plate"
 # datasets_path = Path(f"/work/datasets/{dataset}")
-# out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std_delme")
+# out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std")
 
 # JL
 # dataset = "jump_lite_updated"
@@ -66,16 +66,6 @@ else:  # Raw
         dsets.append(
             dispatch_dataset(compression_path, capture_order=capture_order, regex=regex)
         )
-    # dsets = list(
-    #     map(
-    #         partial(
-    #             dispatch_dataset,
-    #             capture_order=capture_order,
-    #             regex=regex,
-    #         ),
-    #         compression_paths,
-    #     )
-    # )
 
 # %%
 input_paths = []
@@ -238,19 +228,19 @@ def process_input_path(
         "save_interval": 1,
     }
 
-    # try:
-    fov = input_path["key"]
-    if isinstance(fov, tuple):  # Cover key is (str | tuple[str])
-        fov = "__".join(input_path["key"])
-    result, _ = run_pipeline_and_post(
-        pipeline=base_pipeline,
-        img_source=input_path,
-        output_path=output_path,
-        fov=fov,
-        overwrite=False,
-    )
-    # except Exception as e:
-    #     logger.error(e)
+    try:
+        fov = input_path["key"]
+        if isinstance(fov, tuple):  # Cover key is (str | tuple[str])
+            fov = "__".join(input_path["key"])
+        result, _ = run_pipeline_and_post(
+            pipeline=base_pipeline,
+            img_source=input_path,
+            output_path=output_path,
+            fov=fov,
+            overwrite=False,
+        )
+    except Exception as e:
+        logger.error(e)
 
 
 # %%
