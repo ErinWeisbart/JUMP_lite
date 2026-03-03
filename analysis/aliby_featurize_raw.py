@@ -19,18 +19,22 @@ from loguru import logger
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
 
-dataset = "jump_core_annotated"
+threaded = True
+dataset = "jump_lite/imgs"
 datasets_path = Path(f"/work/datasets/{dataset}/raw")
 # regex = ".*source_4__2021_08_23_Batch12__BR00126717__B11__DNA__2__Orig.tif"
-regex = "(.*)__([A-Z][0-9]{2})__([A-Za-z]+)__([0-9])__Orig.tif"
-capture_order = "PWCF"  # Plate, Well, Channel Foci
+# regex = "(.*)__([A-Z][0-9]{2})__([A-Za-z]+)__([0-9])__Orig.tif" # CPG format
+# regex = 'source_13__20221017_Run3__CP-CC9-R3-05__P21__3__Mito.tif' # Our format
+regex = "(.*)__([A-Z][0-9]{2})__([0-9])__([A-Za-z]+).tif"  # Our format
+capture_order = "PWFC"  # Plate, Well, Channel Foci
 input_dimensions = "YX"
 nchannels = 5
 dset = dispatch_dataset(datasets_path, regex=regex, capture_order=capture_order)
-output_basedir = Path("/work/datasets/aliby_output/")
+output_basedir = Path("/work/datasets/aliby_output/jump_lite_raw/")
 n_devices = 4
-n_addresses = 40
+n_addresses = 20
 
+# %%
 # # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # # These tell us when to pad or select channels to match the models
 # # model_group -> (tile_size, channels)
@@ -166,7 +170,9 @@ def process_input_path(
     }
 
     try:
-        fov = "__".join(input_path["key"])
+        fov = input_path["key"]
+        if isinstance(fov, tuple):  # Cover key is (str | tuple[str])
+            fov = "__".join(input_path["key"])
         result, _ = run_pipeline_and_post(
             pipeline=base_pipeline,
             img_source=input_path["path"],
@@ -210,8 +216,8 @@ def process_with_timestamp(
         model_name=model_name,
         model_params=model_params,
     )
-    if False:
-        with Pool() as p:
+    if threaded:
+        with Pool(80) as p:
             process_input_path_curried2 = partial(
                 process_input_path_curried,
                 model_name=model_name,

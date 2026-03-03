@@ -33,7 +33,7 @@ out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
 compression_paths = [
     x
     for x in datasets_path.glob("*/")
-    if x.name.endswith("mq.zarr")
+    # if x.name.endswith("mq.zarr")
     # or x.name.startswith("jpegxl_lossy_d15")
 ]
 n_devices = 4
@@ -51,12 +51,16 @@ model_groups_inputs = dict(
     openphenom=dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3, 4],
-        clip_8bit=True,
+        clip_outliers=True,
         standard_scale=False,
+        convert_8bit=True,
     ),  # openphenom
     subcell=dict(
         tile_size=448,
         selected_channels=[3, 2, 1, 0],
+        clip_outliers=True,
+        # convert_8bit=True,
+        standard_scale=False,
     ),
     morphem=dict(
         tile_size=224,
@@ -66,9 +70,22 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    morphem=dict(
-        model_group="morphem",
-        model_name="CaicedoLab/MorphEm",
+    # openphenom=dict(
+    #     model_group="openphenom",
+    #     model_name="recursionpharma/OpenPhenom",
+    #     device=-1,
+    #     clip_outliers=True,
+    #     convert_8bit=True,
+    # ),
+    # morphem=dict(
+    #     model_group="morphem",
+    #     model_name="CaicedoLab/MorphEm",
+    #     device=-1,
+    # ),
+    subcell__clip01=dict(
+        model_group="subcell",
+        model_type="mae_contrast_supcon_model",
+        model_channels="rybg",
         device=-1,
     ),
     dinov2=dict(
@@ -77,24 +94,12 @@ model_setup_params = dict(
         model_name="dinov2_vits14",
         device=-1,
     ),
-    subcell=dict(
-        model_group="subcell",
-        model_type="mae_contrast_supcon_model",
-        model_channels="rybg",
-        device=-1,
-    ),
     # subcell__nonstd=dict(
     #     model_group="subcell",
     #     model_type="mae_contrast_supcon_model",
     #     model_channels="rybg",
     #     device=-1,
     # ),
-    openphenom=dict(
-        model_group="openphenom",
-        model_name="recursionpharma/OpenPhenom",
-        device=-1,
-        standard_scale=False,
-    ),
     dinov2_random=dict(
         model_group="dinov2",
         repo_or_dir="facebookresearch/dinov2",
@@ -138,7 +143,7 @@ def process_input_path(
         if setup_params.get("device") == -1:
             device_id = hashed_input_int % n_devices
             setup_params["device"] = device_id
-            print(f"Selected device {device_id}")
+            # print(f"Selected device {device_id}")
 
     embedding_step_name = f"nahual_embed_{model_name}"
     fluo_base_config = {
@@ -151,7 +156,8 @@ def process_input_path(
             "kind": "crop",
             "tile_size": model_params["tile_size"],
             "calculate_drift": False,
-            "clip_8bit": model_params.get("clip_8bit", False),
+            "clip_outliers": model_params.get("clip_outliers", False),
+            "convert_8bit": model_params.get("convert_8bit", False),
             "standard_scale": model_params.get("standard_scale", True),
         },
     }
@@ -180,16 +186,16 @@ def process_input_path(
         "save_interval": 1,
     }
 
-    try:
-        result, _ = run_pipeline_and_post(
-            pipeline=base_pipeline,
-            img_source=input_path,
-            output_path=output_path,
-            fov=input_path["key"],
-            overwrite=False,
-        )
-    except Exception as e:
-        logger.error(e)
+    # try:
+    result, _ = run_pipeline_and_post(
+        pipeline=base_pipeline,
+        img_source=input_path,
+        output_path=output_path,
+        fov=input_path["key"],
+        overwrite=False,
+    )
+    # except Exception as e:
+    #     logger.error(e)
 
 
 # %%
@@ -218,8 +224,8 @@ def process_with_timestamp(
 
         logger.remove()
         logger.add(output_path / f"{timestamp}_{dataset_name}_{model_name}.log")
-        # if __file__:
-        #     shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        if __file__:
+            shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
         # if False:
         #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
