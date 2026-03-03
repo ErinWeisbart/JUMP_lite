@@ -19,25 +19,72 @@ from tqdm import tqdm
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
 
-threaded = True
+threaded = False
+n_devices = 4
+n_addresses = 20
+capture_order = "CYX"
+regex = None
+input_dimensions = None
+
+# 4 plates
 # dataset = "jump_target2_4plate"
 # datasets_path = Path(f"/work/datasets/{dataset}")
-# out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std")
-dataset = "jump_lite_updated"
-datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
-out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
+# out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std_delme")
 
-# compression_paths = [
-#     x for x in datasets_path.glob("*/") if x.name.startswith("jpegxl_lossy_mq")
-# ]
+# JL
+# dataset = "jump_lite_updated"
+# datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
+# out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
+
+# Process raw images
+dataset = "jump_lite/imgs"
+datasets_path = Path(f"/work/datasets/{dataset}/")
+regex = "(.*)__([A-Z][0-9]{2})__([0-9])__([A-Za-z]+).tif"  # Our format
+capture_order = "PWFC"  # Plate, Well, Channel Foci
+input_dimensions = "YX"
+nchannels = 5
+out_dir = Path("/work/datasets/aliby_output/jump_lite_raw/")
+
+
 compression_paths = [
     x
     for x in datasets_path.glob("*/")
     # if x.name.endswith("mq.zarr")
     # or x.name.startswith("jpegxl_lossy_d15")
 ]
-n_devices = 4
-n_addresses = 20
+# %%
+# %%
+if capture_order == "CYX":  # Zarr
+    dsets = list(
+        map(
+            partial(dispatch_dataset, is_zarr=True, is_monozarr=True), compression_paths
+        )
+    )
+else:  # Raw
+    dsets = []
+    for compression_path in compression_paths:
+        dsets.append(
+            dispatch_dataset(compression_path, capture_order=capture_order, regex=regex)
+        )
+    # dsets = list(
+    #     map(
+    #         partial(
+    #             dispatch_dataset,
+    #             capture_order=capture_order,
+    #             regex=regex,
+    #         ),
+    #         compression_paths,
+    #     )
+    # )
+
+# %%
+input_paths = []
+print("Loading input paths as Image/Zarr objects")
+for dset in dsets:
+    # MonozarZarr dataset returns a dictionary with store->str, inputs_list -> list[str]
+    input_paths.append(dset.get_position_ids())
+
+# %%
 
 # Parameters shared amongst all models: tile_size and which channels to use (ids)
 # These tell us when to pad or select channels to match the models
@@ -149,7 +196,7 @@ def process_input_path(
     fluo_base_config = {
         "input_path": input_path,
         "image_kwargs": {
-            "capture_order": "CYX",
+            "capture_order": capture_order,  # Only used with images
         },
         "ntps": 1,
         "tile": {
@@ -161,6 +208,11 @@ def process_input_path(
             "standard_scale": model_params.get("standard_scale", True),
         },
     }
+    # These are conditional on whether we use zarr or a list of images
+    if all((regex, input_dimensions)):
+        fluo_base_config["image_kwargs"]["regex"] = regex
+        fluo_base_config["image_kwargs"]["input_dimensions"] = input_dimensions
+
     embed_params = dict(
         address=ipc_addr,
         model_group=model_params["model_group"],
@@ -187,26 +239,18 @@ def process_input_path(
     }
 
     # try:
+    fov = input_path["key"]
+    if isinstance(fov, tuple):  # Cover key is (str | tuple[str])
+        fov = "__".join(input_path["key"])
     result, _ = run_pipeline_and_post(
         pipeline=base_pipeline,
         img_source=input_path,
         output_path=output_path,
-        fov=input_path["key"],
+        fov=fov,
         overwrite=False,
     )
     # except Exception as e:
     #     logger.error(e)
-
-
-# %%
-dsets = list(
-    map(partial(dispatch_dataset, is_zarr=True, is_monozarr=True), compression_paths)
-)
-input_paths = []
-print("Loading input paths as Image/Zarr objects")
-for dset in dsets:
-    # MonozarZarr dataset returns a dictionary with store->str, inputs_list -> list[str]
-    input_paths.append(dset.get_position_ids())
 
 
 # %%
@@ -242,13 +286,9 @@ def process_with_timestamp(
     # Thread or not
     if threaded:
         with Pool() as p:
-            result = p.map(process_input_path_curried, input_paths.values())
+            result = p.map(process_input_path_curried, input_paths)
     else:
-        result = [
-            process_input_path_curried(input_path)
-            for input_path in input_paths.values()
-            # for group_key, input_path_d in tqdm(input_paths.items())
-        ]
+        result = [process_input_path_curried(path) for path in input_paths]
     # print(f"Processing took {perf_counter() - t0} seconds")
     return result
 
