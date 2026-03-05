@@ -6,15 +6,13 @@ from functools import partial
 from itertools import product
 from multiprocessing import Pool
 from pathlib import Path
-from time import perf_counter, strftime
+from time import strftime
 
 import numcodecs
 from aliby.io.dataset import dispatch_dataset
 from aliby.pipe import run_pipeline_and_post
 from imagecodecs.numcodecs import Jpegxl
-from joblib import Parallel, delayed
 from loguru import logger
-from tqdm import tqdm
 
 # Register the codecs manually
 numcodecs.register_codec(Jpegxl)
@@ -107,29 +105,30 @@ model_groups_inputs = dict(
 
 # Only models in this dictionary will be used
 model_setup_params = dict(
-    # openphenom=dict(
-    #     model_group="openphenom",
-    #     model_name="recursionpharma/OpenPhenom",
-    #     device=-1,
-    #     clip_outliers=True,
-    #     convert_8bit=True,
-    # ),
     # morphem=dict(
     #     model_group="morphem",
     #     model_name="CaicedoLab/MorphEm",
     #     device=-1,
     # ),
-    subcell__clip01=dict(
-        model_group="subcell",
-        model_type="mae_contrast_supcon_model",
-        model_channels="rybg",
-        device=-1,
-    ),
+    # subcell__clip01=dict(
+    #     model_group="subcell",
+    #     model_type="mae_contrast_supcon_model",
+    #     model_channels="rybg",
+    #     device=-1,
+    # ),
     dinov2=dict(
         model_group="dinov2",
         repo_or_dir="facebookresearch/dinov2",
         model_name="dinov2_vits14",
         device=-1,
+    ),
+    openphenom=dict(
+        model_group="openphenom",
+        model_name="recursionpharma/OpenPhenom",
+        device=-1,
+        convert_8bit=True,
+        standard_scale=True,
+        clip_outliers=True,
     ),
     # subcell__nonstd=dict(
     #     model_group="subcell",
@@ -261,12 +260,7 @@ def process_with_timestamp(
         if __file__:
             shutil.copy(__file__, output_path / f"{timestamp}_script.py")
 
-        # if False:
-        #     result = Parallel(30)(delayed(process_input_path)(x) for x in input_paths)
-        # else:
-        #     from tqdm import tqdm
-        # t0 = perf_counter()
-    print(output_path)
+    print(f"Output path: {output_basedir}")
     process_input_path_curried = partial(
         process_input_path,
         output_path=output_path,
