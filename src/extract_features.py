@@ -1,8 +1,11 @@
 """
-Feature Extraction Script
+Feature Extraction Script (Fast / Parallel)
 
-Extracts features from aliby_output profiles and creates raw_features.parquet files.
-Supports both CellProfiler measurements and embedding-based features (e.g., dinov2).
+Drop-in replacement for extract_features.py with the following optimizations:
+1. Parallel processing of profile directories via joblib
+2. Combined SQL queries (fewer DuckDB materializations)
+3. Single-query aggregation+pivot (no intermediate CREATE TABLE)
+4. Built-in cache-dir default for faster re-runs
 
 Usage:
     # Auto-discover and process all MODEL/COMPRESSION combinations
@@ -11,18 +14,23 @@ Usage:
     # Process specific model only
     python src/extract_features.py --input /work/datasets/aliby_output --model cp_measure --output ./output
 
-    # Process specific model and compression
-    python src/extract_features.py --input /work/datasets/aliby_output --model dinov2 --compression zstd.zarr --output ./output
+    # Control parallelism (default: all cores)
+    python src/extract_features.py --input /work/datasets/aliby_output --output ./output --n-jobs 4
 """
 
 import argparse
+import os
+import time
 import warnings
+from collections import defaultdict
 from pathlib import Path
 
 import duckdb
 import polars as pl
-from polars import selectors as cs
-from trommel.core import basic_cleanup
+from joblib import Parallel, delayed
+
+# Directories with more parquet files than this use plate-chunked processing
+_CHUNK_FILE_THRESHOLD = 5000
 
 
 def discover_profile_directories(
@@ -32,7 +40,15 @@ def discover_profile_directories(
     dataset_filter: str | None = None,
 ) -> list[dict]:
     """
-    Discover all MODEL/DATASET/COMPRESSION/profiles directories.
+    Discover profile directories by recursively scanning for *.zarr/profiles/.
+
+    Handles any nesting depth. The two path segments immediately above the
+    .zarr directory are treated as (model, dataset) or (dataset, model),
+    resolved via the model_filter heuristic.
+
+    Supported layouts (any prefix depth):
+        .../MODEL/DATASET/COMPRESSION.zarr/profiles/
+        .../DATASET/MODEL/COMPRESSION.zarr/profiles/
 
     Args:
         base_dir: Base aliby_output directory
@@ -45,57 +61,288 @@ def discover_profile_directories(
     """
     results = []
 
-    # Iterate over model directories (cp_measure, dinov2, etc.)
-    for model_dir in base_dir.iterdir():
-        if not model_dir.is_dir():
+    # Recursively find all dirs that contain a profiles/ subdirectory.
+    # This handles both compressed (*.zarr/profiles/) and raw (raw/profiles/) layouts.
+    for profiles_path in base_dir.rglob("profiles"):
+        if not profiles_path.is_dir():
             continue
-        # Skip cache directories
-        if "cache" in model_dir.name.lower():
+        compression_dir = profiles_path.parent
+
+        # Skip cache directories anywhere in the path
+        rel = compression_dir.relative_to(base_dir)
+        if any("cache" in part.lower() for part in rel.parts):
             continue
 
-        model_name = model_dir.name
+        if compression_filter and compression_dir.name != compression_filter:
+            continue
+
+        # The two directory levels above the .zarr are the model and dataset
+        # (in either order). We need at least 2 parent levels above base_dir.
+        parent1 = compression_dir.parent  # one level above .zarr
+        parent2 = parent1.parent          # two levels above .zarr
+
+        if parent1 == base_dir or parent2 == base_dir:
+            # Only one level above base_dir — treat parent1 as model, no dataset
+            # (shouldn't normally happen, but be defensive)
+            continue
+
+        # parent1.name and parent2.name are the two candidates for model/dataset
+        name_a = parent2.name  # further from .zarr
+        name_b = parent1.name  # closer to .zarr
+
+        # Determine which is model and which is dataset
+        if model_filter:
+            if name_a == model_filter:
+                model_name, dataset_name = name_a, name_b
+            elif name_b == model_filter:
+                model_name, dataset_name = name_b, name_a
+            else:
+                continue
+        elif dataset_filter:
+            if name_a == dataset_filter:
+                model_name, dataset_name = name_b, name_a
+            elif name_b == dataset_filter:
+                model_name, dataset_name = name_a, name_b
+            else:
+                continue
+        else:
+            # Default: assume .../MODEL/DATASET/COMPRESSION.zarr
+            model_name, dataset_name = name_a, name_b
+
         if model_filter and model_name != model_filter:
             continue
+        if dataset_filter and dataset_name != dataset_filter:
+            continue
 
-        # Iterate over dataset directories
-        for dataset_dir in model_dir.iterdir():
-            if not dataset_dir.is_dir():
-                continue
-
-            dataset_name = dataset_dir.name
-            if dataset_filter and dataset_name != dataset_filter:
-                continue
-
-            # Iterate over compression directories (*.zarr)
-            for compression_dir in dataset_dir.iterdir():
-                if not compression_dir.is_dir():
-                    continue
-                if not compression_dir.name.endswith(".zarr"):
-                    continue
-
-                compression_name = compression_dir.name
-                if compression_filter and compression_name != compression_filter:
-                    continue
-
-                # Check for profiles subdirectory
-                profiles_path = compression_dir / "profiles"
-                if profiles_path.exists() and profiles_path.is_dir():
-                    results.append({
-                        "model": model_name,
-                        "dataset": dataset_name,
-                        "compression": compression_name,
-                        "profiles_path": profiles_path,
-                    })
+        results.append({
+            "model": model_name,
+            "dataset": dataset_name,
+            "compression": compression_dir.name,
+            "profiles_path": profiles_path,
+        })
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Chunked processing for large directories (855K+ small parquet files)
+# ---------------------------------------------------------------------------
+
+_WELL_ID_EXPR = (
+    "string_split(parse_filename(filename, true), '__')[1] || '__' || "
+    "string_split(parse_filename(filename, true), '__')[2] || '__' || "
+    "string_split(parse_filename(filename, true), '__')[3] || '__' || "
+    "string_split(parse_filename(filename, true), '__')[4]"
+)
+
+
+def _detect_parquet_format(sample_file: str) -> dict:
+    """Detect data format and column types from a single parquet file."""
+    con = duckdb.connect()
+    try:
+        desc = con.sql(f"SELECT * FROM read_parquet('{sample_file}') LIMIT 1").description
+        columns = [col[0] for col in desc]
+        dtypes = {col[0]: col[1] for col in desc}
+
+        has_long = all(c in columns for c in ("branch", "metric", "object"))
+
+        if not has_long:
+            feature_cols = [
+                c for c in columns
+                if c not in ("tile", "label", "filename", "tp", "site")
+            ]
+            return {"format": "wide", "feature_cols": feature_cols}
+
+        # Determine value column and whether UNNEST is needed
+        unnest_values = "values" in columns and dtypes.get("values") == "list"
+        value_col = "value"
+        if "values" in columns and "value" not in columns and not unnest_values:
+            value_col = "values"
+
+        # Detect CellProfiler vs DL model by object values
+        objects = set(
+            r[0] for r in con.sql(
+                f"SELECT DISTINCT object FROM read_parquet('{sample_file}')"
+            ).fetchall()
+        )
+        is_cp = objects.issubset({"cell", "nuclei"})
+
+        return {
+            "format": "cp_long" if is_cp else "dl_long",
+            "value_col": value_col,
+            "unnest_values": unnest_values,
+            "objects": objects,
+            "has_label": "label" in columns,
+        }
+    finally:
+        con.close()
+
+
+def _process_plate(
+    plate_key: str,
+    file_list: list[str],
+    fmt: dict,
+    n_threads: int,
+) -> pl.DataFrame | None:
+    """Process one plate's parquet files into a well-level DataFrame.
+
+    Designed to be called standalone or via joblib (must be picklable).
+    """
+    con = duckdb.connect(config={"threads": n_threads})
+    try:
+        flist = "[" + ",".join(f"'{f}'" for f in file_list) + "]"
+        data_format = fmt["format"]
+
+        if data_format in ("dl_long", "cp_long"):
+            vcol = fmt["value_col"]
+
+            # Handle old datasets where "values" is a list column
+            if fmt.get("unnest_values"):
+                src = (
+                    f"(SELECT *, UNNEST(values) AS _val, ({_WELL_ID_EXPR}) AS well_id "
+                    f" FROM read_parquet({flist}, filename=true))"
+                )
+                vcol = "_val"
+            else:
+                src = (
+                    f"(SELECT *, ({_WELL_ID_EXPR}) AS well_id "
+                    f" FROM read_parquet({flist}, filename=true))"
+                )
+
+            if data_format == "dl_long":
+                agg = con.sql(f"""
+                    SELECT well_id,
+                           branch || metric AS fname,
+                           median({vcol}) AS fval
+                    FROM {src}
+                    GROUP BY well_id, fname
+                """)
+                return con.sql("PIVOT agg ON fname USING first(fval)").pl()
+
+            else:  # cp_long
+                agg = con.sql(f"""
+                    SELECT well_id,
+                           branch || metric AS mname,
+                           object,
+                           median({vcol}) AS cval
+                    FROM {src}
+                    GROUP BY well_id, mname, object
+                """)
+                result = con.sql("PIVOT agg ON object, mname USING first(cval)").pl()
+
+                if fmt.get("has_label"):
+                    counts = con.sql(f"""
+                        SELECT well_id,
+                            COUNT(DISTINCT CASE WHEN object='cell' THEN label END)
+                                AS Metadata_n_cells,
+                            COUNT(DISTINCT CASE WHEN object='nuclei' THEN label END)
+                                AS Metadata_n_nuclei
+                        FROM {src}
+                        GROUP BY well_id
+                    """).pl()
+                    result = result.join(counts, on="well_id", how="left")
+
+                return result
+
+        else:  # wide format
+            cols = fmt["feature_cols"]
+            agg = ", ".join(f'mean("{c}") AS "{c}"' for c in cols)
+            if not agg:
+                return None
+            return con.sql(f"""
+                SELECT ({_WELL_ID_EXPR}) AS well_id, {agg}
+                FROM read_parquet({flist}, filename=true)
+                GROUP BY well_id
+            """).pl()
+
+    except Exception as e:
+        print(f"    WARNING: plate {plate_key} failed: {e}")
+        return None
+    finally:
+        con.close()
+
+
+def get_features_chunked(
+    profiles_dir: Path,
+    n_threads: int = 8,
+    n_workers: int = 32,
+) -> pl.DataFrame:
+    """Feature extraction for directories with many small parquet files.
+
+    Groups files by plate (source__batch__plate) and processes each plate
+    independently, avoiding DuckDB's per-file overhead when globbing
+    hundreds of thousands of files.
+
+    Args:
+        profiles_dir: Directory containing parquet files.
+        n_threads: Total DuckDB threads budget.
+        n_workers: Number of parallel plate workers (via joblib).
+    """
+    # 1. Group files by plate
+    print(f"  Scanning files...")
+    t0 = time.perf_counter()
+    plate_groups: dict[str, list[str]] = defaultdict(list)
+    for entry in os.scandir(str(profiles_dir)):
+        if entry.name.endswith(".parquet") and entry.is_file(follow_symlinks=False):
+            parts = entry.name[:-8].split("__")  # strip .parquet
+            key = "__".join(parts[:3]) if len(parts) >= 3 else "_default"
+            plate_groups[key].append(entry.path)
+
+    n_files = sum(len(v) for v in plate_groups.values())
+    print(f"  {n_files:,} files across {len(plate_groups)} plates "
+          f"({time.perf_counter() - t0:.1f}s)")
+
+    # 2. Detect format from a sample file
+    sample = next(iter(plate_groups.values()))[0]
+    fmt = _detect_parquet_format(sample)
+    print(f"  Format: {fmt['format']}", end="")
+    if fmt["format"] != "wide":
+        print(f"  objects={fmt.get('objects', '?')}")
+    else:
+        print()
+
+    # 3. Process plates
+    plates = sorted(plate_groups.items())
+
+    if n_workers > 1 and len(plates) > 1:
+        thr_per = max(1, n_threads // n_workers)
+        print(f"  Parallel: {n_workers} workers x {thr_per} threads/worker")
+        t1 = time.perf_counter()
+        results = Parallel(n_jobs=n_workers, prefer="processes", verbose=10)(
+            delayed(_process_plate)(k, fs, fmt, thr_per)
+            for k, fs in plates
+        )
+        print(f"  All plates done in {time.perf_counter() - t1:.1f}s")
+    else:
+        print(f"  Sequential: {len(plates)} plates")
+        results = []
+        t1 = time.perf_counter()
+        for i, (k, fs) in enumerate(plates):
+            if i % 50 == 0:
+                el = time.perf_counter() - t1
+                rate = (i + 1) / el if el > 0 else 0
+                eta = (len(plates) - i - 1) / rate if rate > 0 else 0
+                print(f"    [{i + 1}/{len(plates)}] {k} ({len(fs)} files) "
+                      f"~{eta:.0f}s remaining")
+            results.append(_process_plate(k, fs, fmt, n_threads))
+        print(f"  Done in {time.perf_counter() - t1:.1f}s")
+
+    # 4. Concat results
+    valid = [r for r in results if r is not None]
+    if not valid:
+        raise RuntimeError("All plates failed")
+    if len(valid) < len(results):
+        print(f"  WARNING: {len(results) - len(valid)} plates failed")
+
+    return pl.concat(valid, how="diagonal")
 
 
 def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_border_cells: bool = False) -> pl.DataFrame:
     """
     Extract and process features from parquet files.
 
-    Adapted from feature_correlation_cp_measure_script.py to handle
-    both CellProfiler measures and embedding-based features.
+    Optimized version: combines SQL queries to reduce materializations.
+    Automatically switches to plate-chunked processing for large directories.
 
     Args:
         profiles_dir: Path to profiles directory containing parquet files
@@ -105,8 +352,17 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
     Returns:
         Polars DataFrame with pivoted well-level features and cell counts
     """
+    # Fast check: switch to chunked mode for large directories
+    n_sampled = 0
+    for entry in os.scandir(str(profiles_dir)):
+        if entry.name.endswith(".parquet"):
+            n_sampled += 1
+            if n_sampled > _CHUNK_FILE_THRESHOLD:
+                print(f"  Large directory (>{_CHUNK_FILE_THRESHOLD} files), "
+                      f"using chunked plate-by-plate processing")
+                return get_features_chunked(profiles_dir)
+
     parquet_files = profiles_dir / "*.parquet"
-    steps_dir = profiles_dir / ".." / "steps"
 
     site_col = "site"
     metric_name = "metric"
@@ -123,32 +379,40 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
         dataset_name = profiles_dir.parent.parent.name
         compression_name = profiles_dir.parent.name
         db_file = cache_dir / f"features_{model_name}_{dataset_name}_{compression_name}.db"
-        con = duckdb.connect(str(db_file))
+        con = duckdb.connect(str(db_file), config={'threads': 50})
     else:
-        con = duckdb.connect()
+        con = duckdb.connect(config={'threads': 50})
 
     try:
-        # First parse filename to get site string
+        # Combined query: parse filename AND extract well_id in one pass
         raw = con.sql(f"""
             SELECT *,
-                parse_filename(filename, true) AS {site_col}
+                parse_filename(filename, true) AS {site_col},
+                string_split(parse_filename(filename, true), '__')[1] || '__' ||
+                string_split(parse_filename(filename, true), '__')[2] || '__' ||
+                string_split(parse_filename(filename, true), '__')[3] || '__' ||
+                string_split(parse_filename(filename, true), '__')[4] AS well_id
             FROM read_parquet('{parquet_files}', filename=true)
-        """)
-
-        # Extract well_id by splitting on __ and taking first 4 parts
-        raw = con.sql(f"""
-            SELECT *,
-                string_split({site_col}, '__')[1] || '__' ||
-                string_split({site_col}, '__')[2] || '__' ||
-                string_split({site_col}, '__')[3] || '__' ||
-                string_split({site_col}, '__')[4] AS well_id
-            FROM raw
         """)
 
         # Check if this is CellProfiler-style data (has branch, metric, object columns)
         columns = [col[0] for col in raw.description]
 
+        # Determine if data is CellProfiler by checking actual object values,
+        # not just column presence. Aliby outputs both CP and DL models in the
+        # same long format (branch/metric/object/value), but CP has
+        # object='cell'/'nuclei' while DL models have object='morphem'/'dinov2'/etc.
+        is_cellprofiler = False
         if branch_name in columns and metric_name in columns and "object" in columns:
+            known_cp_objects = {"cell", "nuclei"}
+            actual_objects = set(
+                row[0] for row in con.sql("SELECT DISTINCT object FROM raw").fetchall()
+            )
+            is_cellprofiler = actual_objects.issubset(known_cp_objects)
+            if not is_cellprofiler:
+                print(f"  Detected DL model (objects: {actual_objects}), using median aggregation")
+
+        if is_cellprofiler:
             # CellProfiler measure format
             # Handle old datasets with column name "values" as list type
             value_dtype = [x[1] for x in raw.description if x[0] == value_name]
@@ -158,59 +422,43 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
             # Optionally filter border cells (objects touching image edge)
             # Get bounding box coordinates to identify border cells
             if filter_border_cells and "label" in columns:
-                # Create table with bbox info per label
-                con.sql("""
-                    CREATE OR REPLACE TABLE bbox_info AS (
-                        SELECT
-                            well_id,
-                            filename,
-                            label,
-                            object,
-                            MAX(CASE WHEN metric = 'BoundingBoxMinimum_X' THEN value END) AS min_x,
-                            MAX(CASE WHEN metric = 'BoundingBoxMinimum_Y' THEN value END) AS min_y,
-                            MAX(CASE WHEN metric = 'BoundingBoxMaximum_X' THEN value END) AS max_x,
-                            MAX(CASE WHEN metric = 'BoundingBoxMaximum_Y' THEN value END) AS max_y
-                        FROM raw
-                        WHERE metric LIKE 'BoundingBox%'
-                        GROUP BY well_id, filename, label, object
-                    )
-                """)
-
-                # Get image dimensions (per file since different sites may have different sizes)
-                con.sql("""
-                    CREATE OR REPLACE TABLE image_dims AS (
-                        SELECT
-                            filename,
-                            MAX(max_x) AS img_width,
-                            MAX(max_y) AS img_height
-                        FROM bbox_info
-                        GROUP BY filename
-                    )
-                """)
-
-                # Filter interior cells (not touching borders)
-                con.sql("""
-                    CREATE OR REPLACE TABLE interior_labels AS (
-                        SELECT DISTINCT b.well_id, b.filename, b.label, b.object
-                        FROM bbox_info b
-                        JOIN image_dims d ON b.filename = d.filename
-                        WHERE b.min_x > 0
-                        AND b.min_y > 0
-                        AND b.max_x < d.img_width
-                        AND b.max_y < d.img_height
-                    )
-                """)
-
-                # Filter raw data to only interior cells
+                # Single CTE chain for border cell filtering
                 con.sql("""
                     CREATE OR REPLACE TABLE raw_filtered AS (
+                        WITH bbox_info AS (
+                            SELECT
+                                well_id, filename, label, object,
+                                MAX(CASE WHEN metric = 'BoundingBoxMinimum_X' THEN value END) AS min_x,
+                                MAX(CASE WHEN metric = 'BoundingBoxMinimum_Y' THEN value END) AS min_y,
+                                MAX(CASE WHEN metric = 'BoundingBoxMaximum_X' THEN value END) AS max_x,
+                                MAX(CASE WHEN metric = 'BoundingBoxMaximum_Y' THEN value END) AS max_y
+                            FROM raw
+                            WHERE metric LIKE 'BoundingBox%'
+                            GROUP BY well_id, filename, label, object
+                        ),
+                        image_dims AS (
+                            SELECT filename,
+                                MAX(max_x) AS img_width,
+                                MAX(max_y) AS img_height
+                            FROM bbox_info
+                            GROUP BY filename
+                        ),
+                        interior_labels AS (
+                            SELECT DISTINCT b.well_id, b.filename, b.label, b.object
+                            FROM bbox_info b
+                            JOIN image_dims d ON b.filename = d.filename
+                            WHERE b.min_x > 0
+                              AND b.min_y > 0
+                              AND b.max_x < d.img_width
+                              AND b.max_y < d.img_height
+                        )
                         SELECT r.*
                         FROM raw r
                         JOIN interior_labels i
-                        ON r.well_id = i.well_id
-                        AND r.filename = i.filename
-                        AND r.label = i.label
-                        AND r.object = i.object
+                          ON r.well_id = i.well_id
+                         AND r.filename = i.filename
+                         AND r.label = i.label
+                         AND r.object = i.object
                     )
                 """)
 
@@ -234,10 +482,9 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
             else:
                 cell_counts_pl = None
 
-            # Create well-level dataset with aggregation (using median for cp_measure)
-            # Aggregates across all cells and sites within each well
-            con.sql(f"""
-                CREATE OR REPLACE TABLE well_level AS (
+            # Single-query aggregation + pivot (no intermediate CREATE TABLE)
+            pivoted = con.sql(f"""
+                PIVOT (
                     SELECT
                         well_id,
                         {branch_name} || {metric_name} AS full_metric_name,
@@ -245,22 +492,41 @@ def get_features(profiles_dir: Path, cache_dir: Path | None = None, filter_borde
                         median(value) AS cvalue
                     FROM {raw_table}
                     GROUP BY {tp_name}, well_id, {branch_name}, {metric_name}, object
-                )
+                ) ON object, full_metric_name USING any_value(cvalue)
             """)
-
-            pivoted = con.sql(
-                f"PIVOT well_level ON object, full_metric_name USING any_value(cvalue)"
-            )
             pivoted_pl = pivoted.pl()
 
             # Add cell counts if available
             if cell_counts_pl is not None:
                 pivoted_pl = pivoted_pl.join(cell_counts_pl, on="well_id", how="left")
 
+        elif branch_name in columns and metric_name in columns and "object" in columns:
+            # DL model in long format (e.g., morphem, dinov2 from aliby)
+            # Same schema as CellProfiler but with model-specific object values
+            # Use median aggregation (consistent with CellProfiler branch)
+
+            # Handle old datasets with column name "values" as list type
+            value_dtype = [x[1] for x in raw.description if x[0] == value_name]
+            if len(value_dtype) and value_dtype[0] == "list":
+                raw = con.sql(f"SELECT *, UNNEST({value_name}) AS value FROM raw")
+
+            # Single-query aggregation + pivot
+            pivoted = con.sql(f"""
+                PIVOT (
+                    SELECT
+                        well_id,
+                        {branch_name} || {metric_name} AS full_metric_name,
+                        object,
+                        median(value) AS cvalue
+                    FROM raw
+                    GROUP BY {tp_name}, well_id, {branch_name}, {metric_name}, object
+                ) ON object, full_metric_name USING any_value(cvalue)
+            """)
+            pivoted_pl = pivoted.pl()
+
         else:
-            # Embedding-based format (e.g., dinov2) - simpler structure
+            # Wide embedding format (no branch/metric/object columns)
             # Just aggregate to well level
-            # Get feature columns (numeric columns that aren't metadata)
             feature_cols = [
                 col for col in columns
                 if col not in [site_col, "filename", tp_name, "well_id"]
@@ -352,6 +618,8 @@ def process_profiles(
     print(f"  Input: {profiles_path}")
 
     try:
+        t0 = time.perf_counter()
+
         # Extract features
         df = get_features(profiles_path, cache_dir, filter_border_cells)
         print(f"  Extracted features: {df.shape}")
@@ -370,8 +638,9 @@ def process_profiles(
 
         # Save to parquet
         df.write_parquet(output_path)
+        elapsed = time.perf_counter() - t0
         print(f"  Output: {output_path}")
-        print(f"  Shape: {df.shape}")
+        print(f"  Shape: {df.shape} ({elapsed:.1f}s)")
 
         return output_path
 
@@ -381,20 +650,20 @@ def process_profiles(
 
 
 def main():
-    """Main entry point for feature extraction."""
+    """Main entry point for feature extraction (parallel)."""
     parser = argparse.ArgumentParser(
-        description="Extract features from aliby_output profiles and create raw_features.parquet files",
+        description="Extract features from aliby_output profiles (fast/parallel version)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Auto-discover and process all combinations
+  # Auto-discover and process all combinations (uses all CPU cores)
   python src/extract_features.py --input /work/datasets/aliby_output --output ./output
 
-  # Process specific model
-  python src/extract_features.py --input /work/datasets/aliby_output --model cp_measure --output ./output
+  # Process specific model with 4 workers
+  python src/extract_features.py --input /work/datasets/aliby_output --model cp_measure --output ./output --n-jobs 4
 
-  # Process specific model and compression
-  python src/extract_features.py --input /work/datasets/aliby_output --model dinov2 --compression zstd.zarr --output ./output
+  # Sequential mode (like original extract_features.py)
+  python src/extract_features.py --input /work/datasets/aliby_output --output ./output --n-jobs 1
         """,
     )
     parser.add_argument(
@@ -431,12 +700,18 @@ Examples:
         "--cache-dir",
         type=Path,
         default=None,
-        help="Optional cache directory for intermediate database files",
+        help="Cache directory for intermediate database files (default: .cache/features under output dir)",
     )
     parser.add_argument(
         "--filter-border-cells",
         action="store_true",
         help="Exclude cells/objects touching image borders (CellProfiler FilterObjects behavior)",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=-1,
+        help="Number of parallel workers (-1 = all cores, 1 = sequential). Default: -1",
     )
 
     args = parser.parse_args()
@@ -448,6 +723,11 @@ Examples:
 
     # Create output directory
     args.output.mkdir(parents=True, exist_ok=True)
+
+    # Default cache dir under output directory
+    cache_dir = args.cache_dir
+    if cache_dir is None:
+        cache_dir = args.output / ".cache" / "features"
 
     # Discover profile directories
     print(f"Discovering profile directories in: {args.input}")
@@ -466,17 +746,29 @@ Examples:
     for info in profiles_list:
         print(f"  - {info['model']}/{info['dataset']}/{info['compression']}")
 
-    # Process each profiles directory
+    # Process profile directories in parallel
     warnings.filterwarnings("ignore")
-    successful = 0
-    failed = 0
+    n_jobs = args.n_jobs
+    if n_jobs == 1 or len(profiles_list) == 1:
+        # Sequential fallback
+        print(f"\nProcessing {len(profiles_list)} profiles sequentially...")
+        results = [
+            process_profiles(info, args.output, cache_dir, args.filter_border_cells)
+            for info in profiles_list
+        ]
+    else:
+        effective_jobs = n_jobs if n_jobs > 0 else "all cores"
+        print(f"\nProcessing {len(profiles_list)} profiles in parallel (n_jobs={effective_jobs})...")
+        t_start = time.perf_counter()
+        results = Parallel(n_jobs=n_jobs, prefer="processes")(
+            delayed(process_profiles)(info, args.output, cache_dir, args.filter_border_cells)
+            for info in profiles_list
+        )
+        t_elapsed = time.perf_counter() - t_start
+        print(f"\nParallel processing took {t_elapsed:.1f}s")
 
-    for profiles_info in profiles_list:
-        result = process_profiles(profiles_info, args.output, args.cache_dir, args.filter_border_cells)
-        if result:
-            successful += 1
-        else:
-            failed += 1
+    successful = sum(1 for r in results if r is not None)
+    failed = sum(1 for r in results if r is None)
 
     # Summary
     print(f"\n{'='*60}")
