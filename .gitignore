@@ -26,6 +26,7 @@ venv/
 ENV/
 env/
 pixi.lock
+.pixi/
 
 # Nix
 .direnv/
@@ -47,6 +48,8 @@ output/
 tmp/
 *.log
 *.csv
+*.html
+logs/
 
 # Analysis outputs
 analysis/feature_similarity/output/
@@ -77,4 +80,7 @@ JUMP_core.code-workspace
 .DS_Store
 Thumbs.db
 dataset_curration/input/refchemdb_inchikey.csv
-dataset_curration/input/refchemdb_inchikey.csv
+
+# Cleanup
+_archive/
+_cleanup_docs/
