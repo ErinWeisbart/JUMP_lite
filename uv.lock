@@ -587,7 +587,7 @@ wheels = [
 
 [[package]]
 name = "cp-measure"
-version = "0.1.13"
+version = "0.1.16"
 source = { editable = "../cp_measure" }
 dependencies = [
     { name = "centrosome" },

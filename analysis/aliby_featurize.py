@@ -30,25 +30,24 @@ input_dimensions = None
 # out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std")
 
 # JL
-# dataset = "jump_lite_updated"
-# datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
-# out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
+dataset = "jump_lite_updated"
+datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
+out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
 
 # Process raw images
-dataset = "jump_lite/imgs"
-datasets_path = Path(f"/work/datasets/{dataset}/")
-regex = "(.*)__([A-Z][0-9]{2})__([0-9])__([A-Za-z]+).tif"  # Our format
-capture_order = "PWFC"  # Plate, Well, Channel Foci
-input_dimensions = "YX"
-nchannels = 5
-out_dir = Path("/work/datasets/aliby_output/jump_lite_raw/")
+# dataset = "jump_lite/imgs"
+# datasets_path = Path(f"/work/datasets/{dataset}/")
+# regex = "(.*)__([A-Z][0-9]{2})__([0-9])__([A-Za-z]+).tif"  # Our format
+# capture_order = "PWFC"  # Plate, Well, Channel Foci
+# input_dimensions = "YX"
+# nchannels = 5
+# out_dir = Path("/work/datasets/aliby_output/jump_lite_raw/")
 
 
 compression_paths = [
     x
     for x in datasets_path.glob("*/")
-    # if x.name.endswith("mq.zarr")
-    # or x.name.startswith("jpegxl_lossy_d15")
+    if x.name.endswith("hq.zarr") or x.name.startswith("jpegxl_lossy_d20")
 ]
 # %%
 # %%
@@ -87,8 +86,8 @@ model_groups_inputs = dict(
         tile_size=256,
         selected_channels=[0, 1, 2, 3, 4],
         clip_outliers=True,
-        standard_scale=False,
         convert_8bit=True,
+        # standard_scale=True,
     ),  # openphenom
     subcell=dict(
         tile_size=448,
@@ -116,25 +115,19 @@ model_setup_params = dict(
     #     model_channels="rybg",
     #     device=-1,
     # ),
-    dinov2=dict(
-        model_group="dinov2",
-        repo_or_dir="facebookresearch/dinov2",
-        model_name="dinov2_vits14",
-        device=-1,
-    ),
-    openphenom=dict(
-        model_group="openphenom",
-        model_name="recursionpharma/OpenPhenom",
-        device=-1,
-        convert_8bit=True,
-        standard_scale=True,
-        clip_outliers=True,
-    ),
-    # subcell__nonstd=dict(
-    #     model_group="subcell",
-    #     model_type="mae_contrast_supcon_model",
-    #     model_channels="rybg",
+    # dinov2=dict(
+    #     model_group="dinov2",
+    #     repo_or_dir="facebookresearch/dinov2",
+    #     model_name="dinov2_vits14",
     #     device=-1,
+    # ),
+    # openphenom=dict(
+    #     model_group="openphenom",
+    #     model_name="recursionpharma/OpenPhenom",
+    #     device=-1,
+    #     convert_8bit=True,
+    #     standard_scale=True,
+    #     clip_outliers=True,
     # ),
     dinov2_random=dict(
         model_group="dinov2",
@@ -257,8 +250,11 @@ def process_with_timestamp(
 
         logger.remove()
         logger.add(output_path / f"{timestamp}_{dataset_name}_{model_name}.log")
-        if __file__:
-            shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        try:
+            if __file__:
+                shutil.copy(__file__, output_path / f"{timestamp}_script.py")
+        except Exception as _:
+            pass
 
     print(f"Output path: {output_basedir}")
     process_input_path_curried = partial(
