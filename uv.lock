@@ -148,8 +148,8 @@ wheels = [
 
 [[package]]
 name = "aliby"
-version = "0.2.0"
-source = { editable = "../aliby" }
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cellpose" },
     { name = "centrosome" },
@@ -166,36 +166,10 @@ dependencies = [
     { name = "scipy" },
     { name = "zarr" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "cellpose", specifier = ">=3.1.1.1" },
-    { name = "cellpose", marker = "extra == 'cellpose'", specifier = ">=3.1.1.1" },
-    { name = "centrosome", specifier = ">=1.3.2" },
-    { name = "cp-measure", specifier = ">=0.1.7,<0.2" },
-    { name = "dask", specifier = ">=2021.12.0" },
-    { name = "loguru", specifier = ">=0.7.3" },
-    { name = "nahual", editable = "../nahual" },
-    { name = "numpy", specifier = ">=1.18" },
-    { name = "pandas", specifier = ">=2.3.2" },
-    { name = "pooch", specifier = ">=1.8.2,<2" },
-    { name = "pyarrow", specifier = ">=19.0.1" },
-    { name = "scikit-image", specifier = ">=0.18.1" },
-    { name = "scikit-learn", specifier = ">=1.2.2" },
-    { name = "scipy", specifier = ">=1.7.3" },
-    { name = "zarr", specifier = ">=2.14.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/18/f7/b8bb522b9dd9ae43beaa0de2cb9ce6a138611b97c5d42632e03094d6c474/aliby-0.2.1.tar.gz", hash = "sha256:0a923249835b29b2212e15ae40a2083d16b3d9a1c34c95a54f8d2d4f37f89d19", size = 98140, upload-time = "2026-03-18T20:11:31.942Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/e2/7943bbd1d5d70613b87efedf5730ea6763a9a482c05dde687d04946f21ea/aliby-0.2.1-py3-none-any.whl", hash = "sha256:58e809a428ae9c80c25d55afa80dc151449c0f5a8e7de990d4b066e8ae4e708b", size = 120507, upload-time = "2026-03-18T20:11:30.967Z" },
 ]
-provides-extras = ["cellpose"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "jupyter", specifier = ">=1.0.0,<2" },
-    { name = "jupytext", specifier = ">=1.15.2,<2" },
-    { name = "ruff", specifier = ">=0.3.2" },
-    { name = "ruff-lsp", specifier = ">=0.0.52" },
-]
-examples = [{ name = "pooch", specifier = ">=1.8.2" }]
-test = [{ name = "pytest", specifier = ">=8.4.2" }]
 
 [[package]]
 name = "anyio"
@@ -588,7 +562,7 @@ wheels = [
 [[package]]
 name = "cp-measure"
 version = "0.1.16"
-source = { editable = "../cp_measure" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "centrosome" },
     { name = "mahotas" },
@@ -596,26 +570,9 @@ dependencies = [
     { name = "scikit-image" },
     { name = "scipy" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "centrosome", specifier = ">=1.3.3" },
-    { name = "mahotas", specifier = ">=1.4.13,<2.0.0" },
-    { name = "numpy", specifier = ">=1.22.1" },
-    { name = "scikit-image", specifier = ">=0.25" },
-    { name = "scipy", specifier = ">=1.9.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ipdb", specifier = ">=0.13.13" },
-    { name = "jupyter", specifier = ">=1.0.0" },
-    { name = "jupytext", specifier = ">=1.15.0" },
-    { name = "ruff", specifier = ">=0.12.1" },
-]
-test = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
+sdist = { url = "https://files.pythonhosted.org/packages/b4/3f/286d3159567448c74c05b57db6dacfa81d564a73eb0fc86a2c515ab76af4/cp_measure-0.1.16.tar.gz", hash = "sha256:7ad82738c3aca706158a91992e1bbf096ec979722d341879425bcdac5da48f17", size = 56911, upload-time = "2026-03-10T20:43:32.87Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/8d/84b5743e784a7e5e8c77683de23a8687feaa85b3b81db50e1b3f892a51d8/cp_measure-0.1.16-py3-none-any.whl", hash = "sha256:eb86b74b2c99f38c742eb2b583c31b96057222167552481fc4f2ef3f3bcd764f", size = 65628, upload-time = "2026-03-10T20:43:31.666Z" },
 ]
 
 [[package]]
@@ -1215,16 +1172,16 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aliby", editable = "../aliby" },
+    { name = "aliby", specifier = ">=0.2.1" },
     { name = "cellpose", specifier = ">=4.0.7" },
-    { name = "cp-measure", editable = "../cp_measure" },
+    { name = "cp-measure", specifier = ">=0.1.16" },
     { name = "duckdb", specifier = ">=1.4.2" },
     { name = "imagecodecs", specifier = ">=2025.8.2" },
     { name = "jump-portrait", specifier = ">=0.0.29" },
     { name = "jupytext", specifier = ">=1.19.1" },
     { name = "lpips", specifier = ">=0.1.4" },
     { name = "matplotlib", specifier = ">=3.0.0" },
-    { name = "nahual", editable = "../nahual" },
+    { name = "nahual", specifier = ">=0.0.8" },
     { name = "numcodecs", specifier = ">=0.16.5" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "pandas", specifier = ">=2.0.0" },
@@ -1775,35 +1732,17 @@ wheels = [
 
 [[package]]
 name = "nahual"
-version = "0.0.7"
-source = { editable = "../nahual" }
+version = "0.0.8"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "loguru" },
     { name = "numpy" },
     { name = "pynng" },
     { name = "requests" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "loguru", specifier = ">=0.7.3" },
-    { name = "numpy", specifier = ">=1.18.0" },
-    { name = "pynng", specifier = ">=0.8.1" },
-    { name = "requests" },
-]
-
-[package.metadata.requires-dev]
-data = [{ name = "pooch", specifier = ">=1.7.0,<2" }]
-dev = [
-    { name = "jupyter", specifier = ">=1.1.1" },
-    { name = "jupytext", specifier = ">=1.17.2" },
-    { name = "ruff", specifier = ">=0.1.15" },
-    { name = "ruff-lsp", specifier = ">=0.0.62" },
-]
-test = [
-    { name = "imageio", specifier = ">=2.37.0" },
-    { name = "matplotlib", specifier = ">=3.9.4" },
-    { name = "pytest", specifier = ">=8.4.0" },
+sdist = { url = "https://files.pythonhosted.org/packages/97/29/57d56ec465965bdae2af0c5bfd79601daf3aa281307c2f2fe0506a2b7b91/nahual-0.0.8.tar.gz", hash = "sha256:230c13f9c5c28d4614af77d2117f3519f6d6037a71125e019ae4515e8b6af500", size = 13580, upload-time = "2026-03-18T20:04:22.82Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c4/e6/653b321115da1a239f333eb7be93b81762f2062fffaf8e2df80c3e0e706c/nahual-0.0.8-py3-none-any.whl", hash = "sha256:6522ca546036b68801e72c448bade94bcaa597362ee30e9da3edca95de6decf7", size = 16205, upload-time = "2026-03-18T20:04:21.726Z" },
 ]
 
 [[package]]
