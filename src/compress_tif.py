@@ -64,7 +64,9 @@ def compress_single_group(key, items, store_name, compressor, zarr_format):
     arr[:] = tmp_arr
 
 
-def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_inner=16):
+def compress_tif(
+    name, compressor, output_dir, groups, overwrite=False, n_jobs_inner=16
+):
     """
     Compress tifs using different algorithms and record time taken and resulting file size.
     Uses parallel processing for group compression.
@@ -89,7 +91,7 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     if not isinstance(compressor, zarr.codecs.blosc.BloscCodec):
         zarr_format = 2
 
-    subset = list(groups.items())#[:5]
+    subset = list(groups.items())  # [:5]
 
     # Compress groups in parallel with limited parallelism to avoid thrashing
     Parallel(n_jobs=n_jobs_inner, prefer="threads")(
@@ -131,21 +133,23 @@ compressors = {
 
 # Add imagecodecs compressors if available
 if IMAGECODECS_AVAILABLE:
-    compressors.update({
-        # "brotli": Brotli(level=11),
-        # "jpegxl_lossless": Jpegxl(lossless=True, level=9),
-        "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
-        # "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
-        "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
-        # "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
-        "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
-        # "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
-        "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
-        # "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
-        # "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
-        # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
-        # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
-    })
+    compressors.update(
+        {
+            # "brotli": Brotli(level=11),
+            # "jpegxl_lossless": Jpegxl(lossless=True, level=9),
+            "jpegxl_lossy_hq": Jpegxl(lossless=False, distance=1.0),
+            # "jpegxl_lossy_hmq": Jpegxl(lossless=False, distance=2.0),
+            "jpegxl_lossy_mq": Jpegxl(lossless=False, distance=3.0),
+            # "jpegxl_lossy_mlq": Jpegxl(lossless=False, distance=4.0),
+            "jpegxl_lossy_lq": Jpegxl(lossless=False, distance=5.0),
+            # "jpegxl_lossy_effort_1": Jpegxl(lossless=False, distance=1.0, effort=1),
+            "jpegxl_lossy_effort_3": Jpegxl(lossless=False, distance=1.0, effort=3),
+            # "jpegxl_lossy_effort_5": Jpegxl(lossless=False, distance=1.0, effort=5),
+            # "jpegxl_lossy_decompression_1": Jpegxl(lossless=False, distance=1.0, decodingspeed=1),
+            # "jpegxl_lossy_decompression_3": Jpegxl(lossless=False, distance=1.0, decodingspeed=3),
+            # "jpegxl_lossy_decompression_5": Jpegxl(lossless=False, distance=1.0, decodingspeed=5),
+        }
+    )
 # for v in {
 #     "preset": {"preset": 9},
 #     "filters": {"filters": filters, "format": lzma.FORMAT_RAW},
@@ -163,7 +167,7 @@ groups = {
 }
 
 # Subsample groups for testing
-# groups = dict(list(groups.items())[:5]) 
+# groups = dict(list(groups.items())[:5])
 
 # %% Run compression and record time
 # Use limited parallelism: outer level = codecs (12), inner level = groups (16)
@@ -172,7 +176,9 @@ n_jobs_codecs = 32  # Number of codecs to compress in parallel
 n_jobs_groups = 16  # Number of groups to compress in parallel within each codec
 
 compression_time = Parallel(n_jobs=n_jobs_codecs, prefer="threads")(
-    delayed(compress_tif)(name, compressor, output_dir, groups, overwrite, n_jobs_groups)
+    delayed(compress_tif)(
+        name, compressor, output_dir, groups, overwrite, n_jobs_groups
+    )
     for name, compressor in compressors.items()
 )
 compression_time = {k: v for d in list(compression_time) for k, v in d.items()}
@@ -258,5 +264,3 @@ Filesize (fraction of raw)
  'lz4': 0.63,
  'raw': 1.0}
 """
-
-

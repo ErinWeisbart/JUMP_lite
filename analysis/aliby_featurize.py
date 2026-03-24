@@ -38,7 +38,7 @@ out_dir = Path("/work/datasets/jump_lite/aliby_output/jump_lite_rerun")
 
 # Process raw images
 # dataset = "jump_lite"
-# dataset = "jump_target2_4plate"
+# # dataset = "jump_target2_4plate"
 # datasets_path = Path(f"/work/datasets/jump_lite/images/raw/{dataset}/")
 # regex = "(.*)__([A-Z][0-9]{2})__([0-9])__([A-Za-z]+).tif"  # Our format
 # capture_order = "PWFC"  # Plate, Well, Channel Foci
