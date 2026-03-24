@@ -1,5 +1,5 @@
 # Example
-# bash get_perwell.sh /work/datasets/aliby_output/openphenom/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles /work/datasets/aliby_output/openphenom/jump_core_annotated/output.parquet
+# bash get_perwell.sh /work/datasets/jump_lite/aliby_output/openphenom/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles /work/datasets/jump_lite/aliby_output/openphenom/jump_core_annotated/output.parquet
 mkdir -p $(dirname "${2}")
 duckdb <<-EOF
 	SET enable_progress_bar = true;

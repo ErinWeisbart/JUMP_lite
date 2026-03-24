@@ -27,12 +27,12 @@ input_dimensions = None
 # 4 plates
 # dataset = "jump_target2_4plate"
 # datasets_path = Path(f"/work/datasets/{dataset}")
-# out_dir = Path(f"/work/datasets/aliby_output/plate4_rerun_scale_std")
+# out_dir = Path(f"/work/datasets/jump_lite/aliby_output/plate4_rerun_scale_std")
 
 # JL
 dataset = "jump_lite_updated"
 datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
-out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
+out_dir = Path("/work/datasets/jump_lite/aliby_output/jump_lite_rerun")
 
 # Process raw images
 # dataset = "jump_lite/imgs"
@@ -41,7 +41,7 @@ out_dir = Path("/work/datasets/aliby_output/jump_lite_rerun")
 # capture_order = "PWFC"  # Plate, Well, Channel Foci
 # input_dimensions = "YX"
 # nchannels = 5
-# out_dir = Path("/work/datasets/aliby_output/jump_lite_raw/")
+# out_dir = Path("/work/datasets/jump_lite/aliby_output/jump_lite_raw/")
 
 
 compression_paths = [

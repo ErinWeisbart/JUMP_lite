@@ -1,5 +1,5 @@
 # Print the time stats for folders listed using `ls`
-# Call using `ls -lU --time-style=+%s /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles  |awk -f benchmark_time.awk`
+# Call using `ls -lU --time-style=+%s /work/datasets/jump_lite/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles  |awk -f benchmark_time.awk`
 # --
 # Example output:
 # 

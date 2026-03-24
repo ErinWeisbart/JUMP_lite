@@ -300,12 +300,12 @@ Then use this data to produce profiles. Remember to uncomment all models in =mod
 *** In rare cases, error may happen
 Use this one-liner to remove files that are too small
 #+begin_src sh
-  find /work/datasets/aliby_output/dinov2_random/jump_core_annotated/jpegxl_lossy_mq.zarr/ -type f -size -5k -printf "%p %s\n"
+  find /work/datasets/jump_lite/aliby_output/dinov2_random/jump_core_annotated/jpegxl_lossy_mq.zarr/ -type f -size -5k -printf "%p %s\n"
 #+end_src
 
 ** Aggregate data to have per-well
 #+begin_src fish
-  for i in /work/datasets/aliby_output/*/jump_core_annotated;
+  for i in /work/datasets/jump_lite/aliby_output/*/jump_core_annotated;
   echo "Running $i"
   bash get_perwell.sh $i/jpegxl_lossy_mq.zarr/profiles $i/perwell.parquet;
   end

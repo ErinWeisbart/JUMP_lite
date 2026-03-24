@@ -18,7 +18,7 @@ Tables to export to LaTeX with ease
 ** Whole experiment
 Note that this only takes the first and last parquet files for each directory. Also we may have used a different number of instances when running the models.
 #+begin_src sh :eval no-export :exports results
-  ls -lU --time-style=+%s /work/datasets/aliby_output/*/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles |
+  ls -lU --time-style=+%s /work/datasets/jump_lite/aliby_output/*/jump_core_annotated/jpegxl_lossy_mq.zarr/profiles |
     awk -f /home/amunoz/projects/JUMP_lite/draft/benchmark_time_ls.awk
 #+end_src
 
@@ -33,7 +33,7 @@ Note that this only takes the first and last parquet files for each directory. A
 This is a more reliable source of ground truth. Each model was instatiated only once.
 #+begin_src sh :eval no-export :exports results
   export LC_COLLATE=C
-  ls -l --time-style=+%s /work/datasets/aliby_output/*/jump_target2_4plate/jpegxl_lossy_effort_3.zarr/profiles |
+  ls -l --time-style=+%s /work/datasets/jump_lite/aliby_output/*/jump_target2_4plate/jpegxl_lossy_effort_3.zarr/profiles |
     awk -f benchmark_time.awk | xargs -I {} $(head -n 2)
 #+end_src
 
@@ -48,7 +48,7 @@ This is a more reliable source of ground truth. Each model was instatiated only 
 We had to fix the fact that half of cp_measure files were processed days before
 #+begin_src sh :eval no-export :exports results  
   export LC_COLLATE=C
-  find /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00
+  find /work/datasets/jump_lite/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00
   " -printf "%p %T@\n" | awk -f benchmark_time_find.awk | sort
     
 #+end_src
@@ -65,7 +65,7 @@ We had to fix the fact that half of cp_measure files were processed days before
 
 Calculate statistics on all features, to validate that the features that drag down feature correlations are basically random noise.
 #+begin_src sql
-    CREATE TABLE IF NOT EXISTS pivoted AS UNPIVOT(SELECT COLUMNS(lambda x: NOT x.starts_with('Metadata')) FROM read_parquet('/work/users/amunoz/projects/JUMP_core/data/cp_measure_jump_target2_4plate_zstd_raw_features.parquet') ON COLUMNS(*);
+    CREATE TABLE IF NOT EXISTS pivoted AS UNPIVOT(SELECT COLUMNS(lambda x: NOT x.starts_with('Metadata')) FROM read_parquet('/work/users/amunoz/projects/JUMP_lite/data/cp_measure_jump_target2_4plate_zstd_raw_features.parquet') ON COLUMNS(*);
   
     COPY (SELECT *, avg/std AS ratio FROM (SELECT feature, MEAN(value) AS avg, stddev_pop(value) as std, var_pop(value) AS var FROM (SELECT split_part(name, '/', 3) AS feature, value FROM pivoted) WHERE value != 'NaN' GROUP BY feature) ORDER BY ratio) TO 'noisy_features.parquet';
 #+end_src

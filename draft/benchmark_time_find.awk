@@ -3,7 +3,7 @@
 # Usage example
 # 
 # export LC_COLLATE=C
-# find /work/datasets/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00" -printf "%p %T@\n" | awk -f benchmark_time_find.awk | sort
+# find /work/datasets/jump_lite/aliby_output/*/jump_target2_4plate/zstd.zarr/profiles/  -type f -newermt "2025-12-01 0:00:00" -printf "%p %T@\n" | awk -f benchmark_time_find.awk | sort
 # 
 # #+RESULTS:
 # | *Model*       | *Images/min* | *Hours(total)* | *#images* |
