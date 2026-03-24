@@ -26,17 +26,20 @@ input_dimensions = None
 
 # 4 plates
 # dataset = "jump_target2_4plate"
-# datasets_path = Path(f"/work/datasets/{dataset}")
+# datasets_path = Path(f"/work/datasets/jump_lite/images/compressed/jump_target2_4plate/{dataset}")
 # out_dir = Path(f"/work/datasets/jump_lite/aliby_output/plate4_rerun_scale_std")
 
 # JL
 dataset = "jump_lite_updated"
-datasets_path = Path(f"/work/datasets/compressed_test/{dataset}")
+datasets_path = Path(
+    f"/work/datasets/jump_lite/images/compressed/compressed_test/{dataset}"
+)
 out_dir = Path("/work/datasets/jump_lite/aliby_output/jump_lite_rerun")
 
 # Process raw images
-# dataset = "jump_lite/imgs"
-# datasets_path = Path(f"/work/datasets/{dataset}/")
+# dataset = "jump_lite"
+# dataset = "jump_target2_4plate"
+# datasets_path = Path(f"/work/datasets/jump_lite/images/raw/{dataset}/")
 # regex = "(.*)__([A-Z][0-9]{2})__([0-9])__([A-Za-z]+).tif"  # Our format
 # capture_order = "PWFC"  # Plate, Well, Channel Foci
 # input_dimensions = "YX"
@@ -201,6 +204,7 @@ def process_input_path(
         selected_channels=model_params["selected_channels"],
         setup_params=setup_params,
     )
+
     base_pipeline = {
         "io": {**fluo_base_config},
         "steps": {

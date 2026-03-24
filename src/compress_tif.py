@@ -100,7 +100,7 @@ def compress_tif(name, compressor, output_dir, groups, overwrite=False, n_jobs_i
     return {name: perf_counter() - t_start}
 
 
-input_dir = Path("/work/datasets/jump_target2_4plate/raw")
+input_dir = Path("/work/datasets/jump_lite/images/compressed/jump_target2_4plate/raw")
 output_dir = input_dir.parent
 
 print("Input dir:", input_dir)

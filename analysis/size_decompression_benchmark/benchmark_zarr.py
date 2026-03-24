@@ -57,10 +57,10 @@ def size_to_bytes(size_str):
 
 def main():
     """Main function to run the benchmark and generate a LaTeX table."""
-    base_dir = Path("/work/datasets/jump_target2_4plate")
-    zarr_dirs = sorted([
-        d for d in base_dir.iterdir() if d.is_dir() and d.name.endswith(".zarr")
-    ])
+    base_dir = Path("/work/datasets/jump_lite/images/compressed/jump_target2_4plate")
+    zarr_dirs = sorted(
+        [d for d in base_dir.iterdir() if d.is_dir() and d.name.endswith(".zarr")]
+    )
     sample_size = 200
 
     results = []
