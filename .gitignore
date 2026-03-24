@@ -1,0 +1,40 @@
+# Environments
+.venv/
+.venv.bak/
+.envrc
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Nix
+result
+
+# Databases
+*.duckdb
+*.duckdb.wal
+
+# Compressed files
+*.tar.gz
+
+# Notebooks
+# *.ipynb
+# analysis/*.ipynb
+
+# Temporary files
+/src/tmp.tiff
+
+# Existing rules
+.direnv
+/.agent-shell/
