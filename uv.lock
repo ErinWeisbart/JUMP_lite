@@ -561,7 +561,7 @@ wheels = [
 
 [[package]]
 name = "cp-measure"
-version = "0.1.16"
+version = "0.1.17"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "centrosome" },
@@ -570,9 +570,9 @@ dependencies = [
     { name = "scikit-image" },
     { name = "scipy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b4/3f/286d3159567448c74c05b57db6dacfa81d564a73eb0fc86a2c515ab76af4/cp_measure-0.1.16.tar.gz", hash = "sha256:7ad82738c3aca706158a91992e1bbf096ec979722d341879425bcdac5da48f17", size = 56911, upload-time = "2026-03-10T20:43:32.87Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/66/25/f67f34c0edd6459815f879f5c23b848f69776f50a42d5864ccf4e2fc4e59/cp_measure-0.1.17.tar.gz", hash = "sha256:581a6aabdf5b1d4487f04d593bd29ffad7748ee093afa7cd52111ae9d479096a", size = 51679, upload-time = "2026-03-20T19:31:41.774Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/8d/84b5743e784a7e5e8c77683de23a8687feaa85b3b81db50e1b3f892a51d8/cp_measure-0.1.16-py3-none-any.whl", hash = "sha256:eb86b74b2c99f38c742eb2b583c31b96057222167552481fc4f2ef3f3bcd764f", size = 65628, upload-time = "2026-03-10T20:43:31.666Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/42/361d4f93eb5d56898f859d98140b7616b645bf725cd67010c0e7921b0eac/cp_measure-0.1.17-py3-none-any.whl", hash = "sha256:ddd52d1081a4c58147cedd1c3c7373d69ae73792a4c6ac27b9f52649fabd8f20", size = 54797, upload-time = "2026-03-20T19:21:23.999Z" },
 ]
 
 [[package]]

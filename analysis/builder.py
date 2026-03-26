@@ -71,7 +71,7 @@ def build_pipeline(
                         "radial_zernikes",
                         "intensity",
                         "sizeshape",
-                        "ferret",
+                        "feret",
                         "texture",
                         "radial_distribution",
                         "zernike",
