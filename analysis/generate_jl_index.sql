@@ -22,29 +22,24 @@ CREATE OR REPLACE TABLE loaddata_uris AS (SELECT *, format('s3://cellpainting-ga
 FROM loaddata_uris;
 SET VARIABLE csv_files = (SELECT list(uri) FROM loaddata_uris);
 
-CREATE OR REPLACE TABLE jump_index AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate|Well|Site)$'),COLUMNS('URL_Orig(DNA|Mito|AGP|ER|RNA)')  FROM read_csv(getVariable('csv_files'), union_by_name=True));
-COPY jump_index TO 'jump_index.parquet';
+CREATE OR REPLACE TYPE source_enum AS ENUM (SELECT DISTINCT Metadata_Source FROM loaddata_uris);
+CREATE OR REPLACE TYPE batch_enum AS ENUM (SELECT DISTINCT Metadata_Batch FROM loaddata_uris);
+CREATE OR REPLACE TYPE plate_enum AS ENUM (SELECT DISTINCT Metadata_Plate FROM loaddata_uris);
+CREATE OR REPLACE TABLE jump_index AS (SELECT
+    Metadata_Source::source_enum AS Metadata_Source,
+    Metadata_Batch::batch_enum AS Metadata_Batch,
+    Metadata_Plate::plate_enum AS Metadata_Plate,
+    Metadata_Well,
+    Metadata_Site,
+  COLUMNS('URL_Orig(DNA|Mito|AGP|ER|RNA)'),
+  FROM read_csv(getVariable('csv_files'), union_by_name=True));
+  COPY jump_index TO 'jump_index.parquet' (COMPRESSION 'ZSTD');
 FROM jump_index;
 
-CREATE OR REPLACE TABLE jump_index_tidy AS (
-UNPIVOT jump_index ON COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
-COPY jump_index_tidy TO 'jump_index_tidy.parquet';
-FROM jump_index_tidy;
-
-CREATE OR REPLACE TABLE jl_index AS (FROM jump_index JOIN (SELECT #2 AS Metadata_Plate FROM read_csv('https://zenodo.org/api/records/18705140/files/jl_plates.csv/content')) using(Metadata_Plate));
-COPY jl_index TO 'jl_index.parquet';
+CREATE OR REPLACE TABLE jl_index AS (FROM jump_index JOIN (SELECT #2 AS Metadata_Plate FROM Read_csv('https://zenodo.org/api/records/18705140/files/jl_plates.csv/content')) using(Metadata_Plate));
+COPY jl_index TO 'jl_index.parquet' (COMPRESSION 'ZSTD');
 FROM jl_index;
 
-CREATE OR REPLACE TABLE jl_index_tidy AS (
-UNPIVOT jl_index ON COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
-COPY jl_index_tidy TO 'jl_index_tidy.parquet';
-FROM jl_index_tidy;
-
 CREATE OR REPLACE TABLE jl_index_sampled AS ( SELECT * EXCLUDE rn FROM (SELECT *, row_number() OVER (PARTITION BY Metadata_Plate,Metadata_Well) as rn FROM jl_index) WHERE rn < 5);
-COPY jl_index_sampled TO 'jl_index_sampled.parquet';
+COPY jl_index_sampled TO 'jl_index_sampled.parquet' (COMPRESSION 'ZSTD');
 FROM jl_index_sampled;
-
-CREATE OR REPLACE TABLE jl_index_sampled_tidy AS (
-UNPIVOT jl_index_sampled On COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
-COPY jl_index_sampled_tidy TO 'jl_index_sampled_tidy.parquet';
-FROM jl_index_sampled_tidy;

@@ -30,7 +30,7 @@ Summary of analyses to get and process profiles
 
 #+RESULTS:
 #+begin_example
-D ┌─────────────────┬────────────────────┬────────────────┐
+┌─────────────────┬────────────────────┬────────────────┐
 │ Metadata_Source │   Metadata_Batch   │ Metadata_Plate │
 │     varchar     │      varchar       │    varchar     │
 ├─────────────────┼────────────────────┼────────────────┤
@@ -122,8 +122,18 @@ Use the redlist and graylist to generate the JUMPindex
 
 *** Create per-site index
 #+begin_src sql :session ddb :tangle generate_jl_index.sql 
-  CREATE OR REPLACE TABLE jump_index AS (SELECT COLUMNS('^Metadata_(Source|Batch|Plate|Well|Site)$'),COLUMNS('URL_Orig(DNA|Mito|AGP|ER|RNA)')  FROM read_csv(getVariable('csv_files'), union_by_name=True));
-  COPY jump_index TO 'jump_index.parquet';
+  CREATE OR REPLACE TYPE source_enum AS ENUM (SELECT DISTINCT Metadata_Source FROM loaddata_uris);
+  CREATE OR REPLACE TYPE batch_enum AS ENUM (SELECT DISTINCT Metadata_Batch FROM loaddata_uris);
+  CREATE OR REPLACE TYPE plate_enum AS ENUM (SELECT DISTINCT Metadata_Plate FROM loaddata_uris);
+  CREATE OR REPLACE TABLE jump_index AS (SELECT
+      Metadata_Source::source_enum AS Metadata_Source,
+      Metadata_Batch::batch_enum AS Metadata_Batch,
+      Metadata_Plate::plate_enum AS Metadata_Plate,
+      Metadata_Well,
+      Metadata_Site,
+    COLUMNS('URL_Orig(DNA|Mito|AGP|ER|RNA)'),
+    FROM read_csv(getVariable('csv_files'), union_by_name=True));
+    COPY jump_index TO 'jump_index.parquet' (COMPRESSION 'ZSTD');
   FROM jump_index;
 #+end_src
 
@@ -146,136 +156,56 @@ Use the redlist and graylist to generate the JUMPindex
 └──────────────────────────────────────────────────────────────┘
 #+end_example
 
-*** Save a "tidy" version of the JUMP index, with one image per row
-#+begin_src sql  :session ddb :tangle generate_jl_index.sql 
-  CREATE OR REPLACE TABLE jump_index_tidy AS (
-  UNPIVOT jump_index ON COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
-  COPY jump_index_tidy TO 'jump_index_tidy.parquet';
-  FROM jump_index_tidy;
-#+end_src
-
-#+RESULTS:
-#+begin_example
-┌─────────────────┬───┬──────────────────┬──────────────────────┐
-│ Metadata_Source │ … │ Metadata_Channel │         uri          │
-│     varchar     │   │     varchar      │       varchar        │
-├─────────────────┼───┼──────────────────┼──────────────────────┤
-│ source_1        │ … │ URL_OrigRNA      │ s3://cellpainting-…  │
-│ source_1        │ … │ URL_OrigMito     │ s3://cellpainting-…  │
-│    ·            │ · │      ·           │          ·           │
-│    ·            │ · │      ·           │          ·           │
-│    ·            │ · │      ·           │          ·           │
-│ source_9        │ … │ URL_OrigDNA      │ s3://cellpainting-…  │
-│ source_9        │ … │ URL_OrigAGP      │ s3://cellpainting-…  │
-├─────────────────┴───┴──────────────────┴──────────────────────┤
-│ 39612107 rows                             7 columns (3 shown) │
-│ 39.61 million rows                                    4 shown │
-└───────────────────────────────────────────────────────────────┘
-#+end_example
-
-
 ** Create a JUMP-Lite index
 *** Filter plates relevant to JUMP-lite
 #+begin_src sql :session ddb :tangle generate_jl_index.sql 
-  CREATE OR REPLACE TABLE jl_index AS (FROM jump_index JOIN (SELECT #2 AS Metadata_Plate FROM read_csv('https://zenodo.org/api/records/18705140/files/jl_plates.csv/content')) using(Metadata_Plate));
-  COPY jl_index TO 'jl_index.parquet';
+  CREATE OR REPLACE TABLE jl_index AS (FROM jump_index JOIN (SELECT #2 AS Metadata_Plate FROM Read_csv('https://zenodo.org/api/records/18705140/files/jl_plates.csv/content')) using(Metadata_Plate));
+  COPY jl_index TO 'jl_index.parquet' (COMPRESSION 'ZSTD');
   FROM jl_index;
 #+end_src
 
 #+RESULTS:
 #+begin_example
-┌─────────────────┬───────────────────┬───┬──────────────────────┐
-│ Metadata_Source │  Metadata_Batch   │ … │     URL_OrigAGP      │
-│     varchar     │      varchar      │   │       varchar        │
-├─────────────────┼───────────────────┼───┼──────────────────────┤
-│ source_2        │ 20211003_Batch_13 │ … │ s3://cellpainting-…  │
-│ source_2        │ 20211003_Batch_13 │ … │ s3://cellpainting-…  │
-│    ·            │       ·           │ · │          ·           │
-│    ·            │       ·           │ · │          ·           │
-│    ·            │       ·           │ · │          ·           │
-│ source_13       │ 20221009_Run2     │ … │ s3://cellpainting-…  │
-│ source_13       │ 20221009_Run2     │ … │ s3://cellpainting-…  │
-├─────────────────┴───────────────────┴───┴──────────────────────┤
-│ 1887910 rows (1.89 million rows, 4 shown) 10 columns (3 shown) │
-└────────────────────────────────────────────────────────────────┘
-#+end_example
-
-*** Tidy version
-#+begin_src sql :session ddb :tangle generate_jl_index.sql 
-  CREATE OR REPLACE TABLE jl_index_tidy AS (
-  UNPIVOT jl_index ON COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
-  COPY jl_index_tidy TO 'jl_index_tidy.parquet';
-  FROM jl_index_tidy;
-#+end_src
-
-#+RESULTS:
-#+begin_example
-┌─────────────────┬───┬──────────────────┬──────────────────────┐
-│ Metadata_Source │ … │ Metadata_Channel │         uri          │
-│     varchar     │   │     varchar      │       varchar        │
-├─────────────────┼───┼──────────────────┼──────────────────────┤
-│ source_2        │ … │ URL_OrigRNA      │ s3://cellpainting-…  │
-│ source_2        │ … │ URL_OrigMito     │ s3://cellpainting-…  │
-│    ·            │ · │      ·           │          ·           │
-│    ·            │ · │      ·           │          ·           │
-│    ·            │ · │      ·           │          ·           │
-│ source_13       │ … │ URL_OrigDNA      │ s3://cellpainting-…  │
-│ source_13       │ … │ URL_OrigAGP      │ s3://cellpainting-…  │
-├─────────────────┴───┴──────────────────┴──────────────────────┤
-│ 9439550 rows (9.44 million rows, 4 shown) 7 columns (3 shown) │
-└───────────────────────────────────────────────────────────────┘
+┌──────────────────────┬──────────────────────┬───┬──────────────────────┐
+│   Metadata_Source    │    Metadata_Batch    │ … │     URL_OrigAGP      │
+│ enum('source_7', '…  │ enum('batch2_20221…  │   │       varchar        │
+├──────────────────────┼──────────────────────┼───┼──────────────────────┤
+│ source_2             │ 20211003_Batch_13    │ … │ s3://cellpainting-…  │
+│ source_2             │ 20211003_Batch_13    │ … │ s3://cellpainting-…  │
+│    ·                 │         ·            │ · │          ·           │
+│    ·                 │         ·            │ · │          ·           │
+│    ·                 │         ·            │ · │          ·           │
+│ source_4             │ 2021_05_31_Batch2    │ … │ s3://cellpainting-…  │
+│ source_4             │ 2021_05_31_Batch2    │ … │ s3://cellpainting-…  │
+├──────────────────────┴──────────────────────┴───┴──────────────────────┤
+│ 1887910 rows (1.89 million rows, 4 shown)         10 columns (3 shown) │
+└────────────────────────────────────────────────────────────────────────┘
 #+end_example
 
 ** Sample sites
 To lower the number of sites needed we sample four sites per unique wells. Note that we include all wells of the JUMP-lite plates. We could select specific plates using =/work/datasets/jump_lite/misc/metadata_dataset_filtered_4reps.parquet=.
 #+begin_src sql :session ddb :tangle generate_jl_index.sql 
   CREATE OR REPLACE TABLE jl_index_sampled AS ( SELECT * EXCLUDE rn FROM (SELECT *, row_number() OVER (PARTITION BY Metadata_Plate,Metadata_Well) as rn FROM jl_index) WHERE rn < 5);
-  COPY jl_index_sampled TO 'jl_index_sampled.parquet';
+  COPY jl_index_sampled TO 'jl_index_sampled.parquet' (COMPRESSION 'ZSTD');
   FROM jl_index_sampled;
 #+end_src
 
 #+RESULTS:
 #+begin_example
-┌─────────────────┬──────────────────────┬───┬──────────────────────┐
-│ Metadata_Source │    Metadata_Batch    │ … │     URL_OrigAGP      │
-│     varchar     │       varchar        │   │       varchar        │
-├─────────────────┼──────────────────────┼───┼──────────────────────┤
-│ source_4        │ 2021_05_10_Batch3    │ … │ s3://cellpainting-…  │
-│ source_4        │ 2021_05_10_Batch3    │ … │ s3://cellpainting-…  │
-│    ·            │         ·            │ · │          ·           │
-│    ·            │         ·            │ · │          ·           │
-│    ·            │         ·            │ · │          ·           │
-│ source_6        │ p211004CPU2OS48hw3…  │ … │ s3://cellpainting-…  │
-│ source_6        │ p211004CPU2OS48hw3…  │ … │ s3://cellpainting-…  │
-├─────────────────┴──────────────────────┴───┴──────────────────────┤
-│ 855519 rows (4 shown)                        10 columns (3 shown) │
-└───────────────────────────────────────────────────────────────────┘
-#+end_example
-
-*** Tidy
-#+begin_src sql :session ddb :tangle generate_jl_index.sql 
-  CREATE OR REPLACE TABLE jl_index_sampled_tidy AS (
-  UNPIVOT jl_index_sampled On COLUMNS('URL_*') INTO NAME Metadata_Channel VALUE uri);
-  COPY jl_index_sampled_tidy TO 'jl_index_sampled_tidy.parquet';
-  FROM jl_index_sampled_tidy;
-#+end_src
-
-#+RESULTS:
-#+begin_example
-┌─────────────────┬───┬──────────────────┬──────────────────────┐
-│ Metadata_Source │ … │ Metadata_Channel │         uri          │
-│     varchar     │   │     varchar      │       varchar        │
-├─────────────────┼───┼──────────────────┼──────────────────────┤
-│ source_4        │ … │ URL_OrigRNA      │ s3://cellpainting-…  │
-│ source_4        │ … │ URL_OrigMito     │ s3://cellpainting-…  │
-│    ·            │ · │      ·           │          ·           │
-│    ·            │ · │      ·           │          ·           │
-│    ·            │ · │      ·           │          ·           │
-│ source_6        │ … │ URL_OrigDNA      │ s3://cellpainting-…  │
-│ source_6        │ … │ URL_OrigAGP      │ s3://cellpainting-…  │
-├─────────────────┴───┴──────────────────┴──────────────────────┤
-│ 4277595 rows (4.28 million rows, 4 shown) 7 columns (3 shown) │
-└───────────────────────────────────────────────────────────────┘
+┌──────────────────────┬──────────────────────┬───┬──────────────────────┐
+│   Metadata_Source    │    Metadata_Batch    │ … │     URL_OrigAGP      │
+│ enum('source_7', '…  │ enum('batch2_20221…  │   │       varchar        │
+├──────────────────────┼──────────────────────┼───┼──────────────────────┤
+│ source_4             │ 2021_06_21_Batch7    │ … │ s3://cellpainting-…  │
+│ source_4             │ 2021_06_21_Batch7    │ … │ s3://cellpainting-…  │
+│    ·                 │ ·                    │ · │          ·           │
+│    ·                 │ ·                    │ · │          ·           │
+│    ·                 │ ·                    │ · │          ·           │
+│ source_8             │ J4                   │ … │ s3://cellpainting-…  │
+│ source_8             │ J4                   │ … │ s3://cellpainting-…  │
+├──────────────────────┴──────────────────────┴───┴──────────────────────┤
+│ 855519 rows (4 shown)                             10 columns (3 shown) │
+└────────────────────────────────────────────────────────────────────────┘
 #+end_example
 
 * Create JUMP index
