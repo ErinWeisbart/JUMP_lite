@@ -23,23 +23,22 @@ import time
 from tqdm import tqdm
 
 
-# Known quality order for JPEG XL codecs (worst to best quality)
-# Based on JPEG XL distance parameter: higher distance = lower quality
+# Known quality order for JPEG XL codecs (best to worst quality, left to right)
 CODEC_QUALITY_ORDER = {
-    'jpegxl_lossy_d30.zarr': 0,
-    'jpegxl_lossy_d20_e2.zarr': 1,
-    'jpegxl_lossy_d15.zarr': 2,
-    'jpegxl_lossy_d10.zarr': 3,
+    'jpegxl_lossy_hq.zarr': 0,
+    'jpegxl_lossy_effort_3.zarr': 1,
+    'jpegxl_lossy_d2_e8.zarr': 2,
+    'jpegxl_lossy_mq.zarr': 3,
     'jpegxl_lossy_lq.zarr': 4,
-    'jpegxl_lossy_mq.zarr': 5,
-    'jpegxl_lossy_effort_3.zarr': 6,
-    'jpegxl_lossy_d2_e8.zarr': 7,
-    'jpegxl_lossy_hq.zarr': 8,
+    'jpegxl_lossy_d10.zarr': 5,
+    'jpegxl_lossy_d15.zarr': 6,
+    'jpegxl_lossy_d20_e2.zarr': 7,
+    'jpegxl_lossy_d30.zarr': 8,
 }
 
 
 def sort_codecs_by_quality(codecs: list[str]) -> list[str]:
-    """Sort codecs by known quality order (worst to best). Unknown codecs go at the end."""
+    """Sort codecs by known quality order (best to worst). Unknown codecs go at the end."""
     max_order = max(CODEC_QUALITY_ORDER.values()) + 1
     return sorted(codecs, key=lambda c: CODEC_QUALITY_ORDER.get(c, max_order))
 

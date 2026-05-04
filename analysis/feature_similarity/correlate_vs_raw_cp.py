@@ -46,8 +46,14 @@ def discover_compressions(base_dir: Path, dataset: str = "jump_target2_4plate") 
         if name.startswith(prefix) and name.endswith(suffix):
             compression = name[len(prefix):-len(suffix)]
             compressions.append(compression)
-    # Sort: zstd first, then others alphabetically
-    compressions.sort(key=lambda x: (x != "zstd", x))
+    # Sort: zstd first, then by quality order (best to worst)
+    _quality_order = [
+        'zstd', 'jpegxl_lossy_hq', 'jpegxl_lossy_effort_3', 'jpegxl_lossy_d2_e8',
+        'jpegxl_lossy_mq', 'jpegxl_lossy_lq', 'jpegxl_lossy_d10',
+        'jpegxl_lossy_d15', 'jpegxl_lossy_d20_e2', 'jpegxl_lossy_d30',
+    ]
+    order_map = {c: i for i, c in enumerate(_quality_order)}
+    compressions.sort(key=lambda x: order_map.get(x, len(_quality_order)))
     return compressions
 
 # Features of special interest for the focused analysis (exact feature name matches)

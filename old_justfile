@@ -201,6 +201,13 @@ reformat-cp:
         --metadata metadata/metadata_dataset_filtered_4reps.parquet \
         --output {{ features_lite }}/cellprofiler_raw_jump_lite_raw_features.parquet
 
+# 4e. Reformat raw CellProfiler profiles filtered to target2 wells (for correlation analysis)
+reformat-cp-target2:
+    uv run python src/reformat_raw_cp_profiles.py \
+        --source {{ cp_profiles }} \
+        --metadata {{ features_target2 }}/cp_measure_jump_target2_4plate_zstd_raw_features.parquet \
+        --output output/raw_jump_cp_profiles_reformatted_filtered.parquet
+
 # Extract single model/codec (manual)
 extract-features model codec output="data/features/jump_lite":
     uv run python src/extract_features.py \
@@ -255,7 +262,7 @@ feature-correlation-raw:
     uv run python analysis/feature_similarity/correlate_vs_raw_cp.py
 
 # Feature similarity: per-cell codec comparison
-feature-codec-compare mappings_dir="output/instance_mappings" n_samples="500":
+feature-codec-compare mappings_dir="analysis/segmentation/output/segmentation_comparison/instance_mappings" n_samples="500":
     uv run python analysis/feature_similarity/compare_codec_features.py \
         --mappings-dir {{ mappings_dir }} --site-level --n-samples {{ n_samples }}
 

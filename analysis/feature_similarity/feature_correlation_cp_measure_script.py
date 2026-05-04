@@ -263,6 +263,19 @@ def parse_feature_names(df):
     return df
 
 
+# Fixed codec order: best to worst quality (left to right)
+_CODEC_ORDER = [
+    'jxl_hq', 'jxl_effort_3', 'jxl_d2_e8', 'jxl_mq', 'jxl_lq',
+    'jxl_d10', 'jxl_d15', 'jxl_d20_e2', 'jxl_d30',
+]
+_KEY_ORDER = [f'jpegxl_lossy_{c.replace("jxl_", "")}.zarr' for c in _CODEC_ORDER]
+_CODEC_LABELS = {
+    'jxl_hq': 'High', 'jxl_effort_3': 'Mid-High', 'jxl_d2_e8': 'D2 E8',
+    'jxl_mq': 'Medium', 'jxl_lq': 'Low', 'jxl_d10': 'D10',
+    'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D25',
+}
+
+
 def _prepare_codec_data(df):
     """Prepare codec-filtered data with labels and ordering.
 
@@ -270,14 +283,11 @@ def _prepare_codec_data(df):
     """
     df_filtered = df[df['key'] != 'zstd.zarr'].copy()
     df_filtered['codec'] = df_filtered['key'].str.replace('.zarr', '').str.replace('jpegxl_lossy_', 'jxl_')
-    codec_mean_corr = df_filtered.groupby('codec')['corr'].mean().sort_values(ascending=False)
-    label_order = list(codec_mean_corr.index)
-    _known_labels = {
-        'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
-        'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
-    }
-    codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
+    present_codecs = set(df_filtered['codec'].unique())
+    label_order = [c for c in _CODEC_ORDER if c in present_codecs]
+    # Append any unknown codecs at the end
+    label_order += sorted(c for c in present_codecs if c not in _CODEC_ORDER)
+    codec_labels = {c: _CODEC_LABELS.get(c, c.replace('jxl_', '').upper()) for c in label_order}
     return df_filtered, label_order, codec_labels
 
 
@@ -393,10 +403,11 @@ def plot_compression_heatmap(df, output_path=SCRIPT_DIR / "output" / "compressio
     """
     perf = df.groupby(["feature", "key"], as_index=False)["corr"].median()
 
-    # Dynamic codec discovery (include zstd)
-    non_zstd_keys = [k for k in df['key'].unique() if k != 'zstd.zarr']
-    key_mean_corr = df[df['key'].isin(non_zstd_keys)].groupby('key')['corr'].mean().sort_values()
-    order = list(key_mean_corr.index) + (['zstd.zarr'] if 'zstd.zarr' in df['key'].unique() else [])
+    present_keys = set(df['key'].unique())
+    order = [k for k in _KEY_ORDER if k in present_keys]
+    order += sorted(k for k in present_keys if k not in _KEY_ORDER and k != 'zstd.zarr')
+    if 'zstd.zarr' in present_keys:
+        order.append('zstd.zarr')
 
     pivot_df = perf.pivot(index="feature", columns="key", values="corr").reindex(columns=order)
 
@@ -421,10 +432,11 @@ def plot_compartment_heatmap(df, output_path=SCRIPT_DIR / "output" / "compartmen
     """
     perf = df.groupby(["compartment", "key"], as_index=False)["corr"].median()
 
-    # Dynamic codec discovery (include zstd)
-    non_zstd_keys = [k for k in df['key'].unique() if k != 'zstd.zarr']
-    key_mean_corr = df[df['key'].isin(non_zstd_keys)].groupby('key')['corr'].mean().sort_values()
-    order = list(key_mean_corr.index) + (['zstd.zarr'] if 'zstd.zarr' in df['key'].unique() else [])
+    present_keys = set(df['key'].unique())
+    order = [k for k in _KEY_ORDER if k in present_keys]
+    order += sorted(k for k in present_keys if k not in _KEY_ORDER and k != 'zstd.zarr')
+    if 'zstd.zarr' in present_keys:
+        order.append('zstd.zarr')
 
     pivot_df = perf.pivot(index="compartment", columns="key", values="corr").reindex(columns=order)
 
@@ -475,7 +487,7 @@ def plot_feature_group_boxplot(df, output_path=SCRIPT_DIR / "output" / "feature_
     _known_labels = {
         'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
         'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D25',
     }
     codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
@@ -563,7 +575,7 @@ def plot_feature_group_violinplot(df, output_path=SCRIPT_DIR / "output" / "featu
     _known_labels = {
         'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
         'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D25',
     }
     codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
@@ -639,7 +651,7 @@ def plot_feature_group_by_compartment(df, output_path=SCRIPT_DIR / "output" / "f
     _known_labels = {
         'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
         'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D25',
     }
     codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
@@ -792,7 +804,7 @@ def plot_feature_subgroups_by_compartment(df, output_path=SCRIPT_DIR / "output" 
     _known_labels = {
         'jxl_lq': 'Low', 'jxl_mq': 'Medium', 'jxl_effort_3': 'Mid-High',
         'jxl_hq': 'High', 'jxl_d2_e8': 'D2 E8', 'jxl_d10': 'D10',
-        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D30',
+        'jxl_d15': 'D15', 'jxl_d20_e2': 'D20 E2', 'jxl_d30': 'D25',
     }
     codec_labels = {c: _known_labels.get(c, c.replace('jxl_', '').upper()) for c in label_order}
 
@@ -902,7 +914,7 @@ def plot_feature_subgroups_by_compartment(df, output_path=SCRIPT_DIR / "output" 
     plt.close(fig)
 
 
-def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby_output/tables/noisy_features.parquet",
+def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby_output/archived_runs/tables/noisy_features.parquet",
                                     output_path=SCRIPT_DIR / "output" / "features_ordered_by_noise.png"):
     """
     Create 3 subplots showing correlation values with features ordered by noise metrics.
@@ -1408,8 +1420,6 @@ def main():
     plot_feature_group_violinplot(df)
     plot_feature_group_by_compartment(df)
     plot_feature_subgroups_by_compartment(df)
-    plot_features_ordered_by_noise(df)
-    plot_noise_ratio_vs_correlation(df)
     plot_feature_similarity_vs_correlation(df)
 
     # Greenlist-filtered violin plot

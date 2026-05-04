@@ -188,6 +188,13 @@ EXCLUDED_PLATES = {
     "CP8-SC1-02":  "SMALL_BATCH_REDLIST (20211126_Run7) - only 2 plates in batch",
     "CP6-SC1-18":  "SMALL_BATCH_REDLIST (20211211_Run9M) - only 2 plates in batch",
     "CP7-SC1-03":  "SMALL_BATCH_REDLIST (20211211_Run9M) - only 2 plates in batch",
+    # Source 13 - pure negcon plates (no treatment wells, not in jump_lite images)
+    "CP-CC9-R1-28": "PURE_NEGCON_PLATE - 100% negcon wells, no DINOv2 features",
+    "CP-CC9-R2-28": "PURE_NEGCON_PLATE - 100% negcon wells, no DINOv2 features",
+    "CP-CC9-R3-28": "PURE_NEGCON_PLATE - 100% negcon wells, no DINOv2 features",
+    "CP-CC9-R4-28": "PURE_NEGCON_PLATE - 100% negcon wells, no DINOv2 features",
+    "CP-CC9-R5-28": "PURE_NEGCON_PLATE - 100% negcon wells, no DINOv2 features",
+    "CP-CC9-R6-28": "PURE_NEGCON_PLATE - 100% negcon wells, no DINOv2 features",
 }
 
 
@@ -312,6 +319,12 @@ def step1_inchikey_to_jcp_mapping(
         print(f"    Saved: {path}")
 
     # ------------------------------------------------------------------
+    # Save per-source JCP sets before combining (pre-filtering)
+    # ------------------------------------------------------------------
+    _save_jcp_set(result_cc.drop_nulls(subset=["Metadata_JCP2022"]), output_dir, "step1d_motive_cc_all")
+    _save_jcp_set(result_cg.drop_nulls(subset=["Metadata_JCP2022"]), output_dir, "step1e_motive_cg_all")
+
+    # ------------------------------------------------------------------
     # Combine and deduplicate
     # ------------------------------------------------------------------
     combined = pl.concat([result_cc, result_cg]).unique()
@@ -394,6 +407,15 @@ def step2_generate_raw_metadata(
     con = duckdb.connect(db_path, read_only=True)
 
     # ------------------------------------------------------------------
+    # Count all unique JCP IDs in the full JUMP dataset (before any filtering)
+    # ------------------------------------------------------------------
+    all_jump_jcps = pl.from_pandas(
+        con.execute("SELECT DISTINCT Metadata_JCP2022 FROM well").df()
+    )
+    print(f"  All unique JCP IDs in JUMP: {all_jump_jcps.height:,}")
+    _save_jcp_set(all_jump_jcps, output_dir, "step0_all_jump")
+
+    # ------------------------------------------------------------------
     # Load CRISPR perturbation list from DuckDB
     # ------------------------------------------------------------------
     print("  Loading CRISPR perturbation list from DuckDB...")
@@ -417,6 +439,11 @@ def step2_generate_raw_metadata(
     compound_jcps = jcp_mapping.select("Metadata_JCP2022").to_series().unique()
     compound_jcps = compound_jcps.filter(~compound_jcps.is_in(NEGATIVE_CONTROL_JCPS))
     print(f"    Compound perturbations (after excluding controls): {len(compound_jcps):,}")
+
+    # Save per-type JCP sets for the filtering supervenn
+    _save_jcp_set(pl.DataFrame({"Metadata_JCP2022": crispr_jcps}), output_dir, "step1a_crispr")
+    _save_jcp_set(pl.DataFrame({"Metadata_JCP2022": orf_jcps}), output_dir, "step1b_orf")
+    _save_jcp_set(pl.DataFrame({"Metadata_JCP2022": compound_jcps}), output_dir, "step1c_compounds")
 
     # ------------------------------------------------------------------
     # Collect all JCP IDs to resolve
@@ -455,6 +482,7 @@ def step2_generate_raw_metadata(
         metadata_all.write_parquet(path)
         print(f"  Saved: {path}")
 
+    _save_jcp_set(metadata_all, output_dir, "step2_raw")
     return metadata_all
 
 
@@ -603,6 +631,7 @@ def step3_filter_metadata(
         df.write_parquet(path)
         print(f"  Saved: {path}")
 
+    _save_jcp_set(df, output_dir, "step3_fill_rate_filter")
     return df
 
 
@@ -1038,6 +1067,7 @@ def step5_match_metadata_to_profiles(
         df_matched_with_jcp.write_parquet(path)
         print(f"  Saved: {path}")
 
+    _save_jcp_set(df_matched_with_jcp, output_dir, "step5_matched_to_profiles")
     return df_matched_with_jcp
 
 
@@ -1199,6 +1229,43 @@ def step6_filter_by_replicates(
     print(f"  Rows: {df_filtered.height:,}")
     print(f"  Columns: {df_filtered.columns}")
 
+    _save_jcp_set(df_filtered, output_dir, "step6_replicate_filter")
+
+    # Save per-type JCP sets from final filtered dataset
+    _save_jcp_set(
+        df_filtered.filter(pl.col("Metadata_Perturbation_Type").cast(pl.Utf8) == "crispr"),
+        output_dir, "step6c_crispr_final",
+    )
+    _save_jcp_set(
+        df_filtered.filter(pl.col("Metadata_Perturbation_Type").cast(pl.Utf8) == "orf"),
+        output_dir, "step6d_orf_final",
+    )
+    _save_jcp_set(
+        df_filtered.filter(pl.col("Metadata_Perturbation_Type").cast(pl.Utf8) == "compound"),
+        output_dir, "step6e_compounds_final",
+    )
+    # All treatments combined (excluding negcons)
+    if "Metadata_pert_type" in df_filtered.columns:
+        _save_jcp_set(
+            df_filtered.filter(pl.col("Metadata_pert_type").cast(pl.Utf8) != "negcon"),
+            output_dir, "step6f_all_treatments_final",
+        )
+    else:
+        _save_jcp_set(df_filtered, output_dir, "step6f_all_treatments_final")
+
+    # Save per-source-group compound JCP sets for the supervenn
+    compounds_only = df_filtered.filter(
+        pl.col("Metadata_Perturbation_Type").cast(pl.Utf8) == "compound"
+    )
+    _save_jcp_set(
+        compounds_only.filter(pl.col("Metadata_Source").cast(pl.Utf8) == "source_7"),
+        output_dir, "step6a_source7_compounds",
+    )
+    _save_jcp_set(
+        compounds_only.filter(pl.col("Metadata_Source").cast(pl.Utf8).is_in(cpg_sources)),
+        output_dir, "step6b_source268_compounds",
+    )
+
     return df_filtered
 
 
@@ -1328,6 +1395,7 @@ def step7_build_target_list(
     output_dir: Path,
     refchemdb_path: Optional[str] = None,
     save_intermediates: bool = False,
+    min_replicates: int = 4,
 ) -> pl.DataFrame:
     """Add target annotation columns to the filtered metadata.
 
@@ -1397,6 +1465,33 @@ def step7_build_target_list(
         )
     )
     print(f"    Unique JCP2022 IDs with MOTIVE targets: {motive_targets.height:,}")
+    # Save only MOTIVE JCPs that survived pipeline filtering (steps 2-6)
+    filtered_jcps = set(
+        df_filtered.select("Metadata_JCP2022").unique()
+        .to_series().cast(pl.Utf8).to_list()
+    )
+    motive_in_pipeline = motive_targets.filter(
+        pl.col("Metadata_JCP2022").cast(pl.Utf8).is_in(filtered_jcps)
+    )
+    _save_jcp_set(motive_in_pipeline, output_dir, "step7a_motive_filtered")
+
+    # Save MOTIVE filtered JCPs per source group
+    motive_jcp_set = set(
+        motive_in_pipeline["Metadata_JCP2022"].cast(pl.Utf8).to_list()
+    )
+    s7_motive = df_filtered.filter(
+        (pl.col("Metadata_Source").cast(pl.Utf8) == "source_7")
+        & pl.col("Metadata_JCP2022").cast(pl.Utf8).is_in(motive_jcp_set)
+    )
+    _save_jcp_set(s7_motive, output_dir, "step7e_motive_source7")
+
+    cpg_motive = df_filtered.filter(
+        pl.col("Metadata_Source").cast(pl.Utf8).is_in(
+            ["source_2", "source_6", "source_8"]
+        )
+        & pl.col("Metadata_JCP2022").cast(pl.Utf8).is_in(motive_jcp_set)
+    )
+    _save_jcp_set(cpg_motive, output_dir, "step7f_motive_source268")
 
     # ------------------------------------------------------------------
     # 7c. Merge MOTIVE targets into metadata
@@ -1500,6 +1595,33 @@ def step7_build_target_list(
             f"    Unique JCP2022 IDs with RefChemDB targets: "
             f"{refchemdb_targets.height:,}"
         )
+        # Save only RefChemDB JCPs that survived pipeline filtering (steps 2-6)
+        filtered_jcps = set(
+            df_filtered.select("Metadata_JCP2022").unique()
+            .to_series().cast(pl.Utf8).to_list()
+        )
+        refchemdb_in_pipeline = refchemdb_targets.filter(
+            pl.col("Metadata_JCP2022").cast(pl.Utf8).is_in(filtered_jcps)
+        )
+        _save_jcp_set(refchemdb_in_pipeline, output_dir, "step7b_refchemdb_filtered")
+
+        # Save RefChemDB filtered JCPs per source group
+        refchemdb_jcp_set = set(
+            refchemdb_in_pipeline["Metadata_JCP2022"].cast(pl.Utf8).to_list()
+        )
+        s7_refchem = df_filtered.filter(
+            (pl.col("Metadata_Source").cast(pl.Utf8) == "source_7")
+            & pl.col("Metadata_JCP2022").cast(pl.Utf8).is_in(refchemdb_jcp_set)
+        )
+        _save_jcp_set(s7_refchem, output_dir, "step7c_refchemdb_source7")
+
+        cpg_refchem = df_filtered.filter(
+            pl.col("Metadata_Source").cast(pl.Utf8).is_in(
+                ["source_2", "source_6", "source_8"]
+            )
+            & pl.col("Metadata_JCP2022").cast(pl.Utf8).is_in(refchemdb_jcp_set)
+        )
+        _save_jcp_set(cpg_refchem, output_dir, "step7d_refchemdb_source268")
 
         # Merge into metadata
         df = df.with_columns(
@@ -1560,7 +1682,12 @@ def step7_build_target_list(
             print("\n  Skipping RefChemDB targets (--refchemdb not provided)")
 
     # ------------------------------------------------------------------
-    # 7e. Add boolean negcon column for copairs compatibility
+    # 7e. SuperVenn: target overlap across source groups
+    # ------------------------------------------------------------------
+    _plot_target_supervenn(df, min_replicates, output_dir)
+
+    # ------------------------------------------------------------------
+    # 7f. Add boolean negcon column for copairs compatibility
     # ------------------------------------------------------------------
     if "Metadata_pert_type" in df.columns:
         df = df.with_columns(
@@ -1570,7 +1697,7 @@ def step7_build_target_list(
         print(f"\n  Added Metadata_negcon (boolean): {n_neg:,} negcons")
 
     # ------------------------------------------------------------------
-    # 7f. Save the updated metadata
+    # 7g. Save the updated metadata
     # ------------------------------------------------------------------
     output_path = output_dir / "metadata_dataset_filtered_4reps.parquet"
     df.write_parquet(output_path)
@@ -1579,6 +1706,183 @@ def step7_build_target_list(
     print(f"  Rows: {df.height:,}")
 
     return df
+
+
+def _save_jcp_set(df: pl.DataFrame, output_dir: Path, step_name: str) -> None:
+    """Save unique JCP2022 IDs from a DataFrame for the filtering supervenn."""
+    jcp_dir = output_dir / "jcp_filtering_steps"
+    jcp_dir.mkdir(parents=True, exist_ok=True)
+    jcps = df.select("Metadata_JCP2022").drop_nulls().unique()
+    path = jcp_dir / f"{step_name}.parquet"
+    jcps.write_parquet(path)
+    print(f"  Saved JCP set ({jcps.height:,} IDs): {path}")
+
+
+def _plot_filtering_supervenn(output_dir: Path) -> None:
+    """Plot a SuperVenn showing JCP ID retention at each pipeline step.
+
+    Reads saved JCP ID sets from output_dir/jcp_filtering_steps/.
+    """
+    jcp_dir = output_dir / "jcp_filtering_steps"
+    if not jcp_dir.exists():
+        print("  No JCP filtering step data found, skipping supervenn")
+        return
+
+    # Ordered from broadest to narrowest, with display names
+    _STEP_ORDER = [
+        ("step6f_all_treatments_final", "All Treatments (final)"),
+        ("step6d_orf_final", "ORF (final)"),
+        ("step6c_crispr_final", "CRISPR (final)"),
+        ("step6e_compounds_final", "Compounds (final)"),
+        ("step7c_refchemdb_source7", "RefChemDB source_7"),
+        ("step7d_refchemdb_source268", "RefChemDB source_2/6/8"),
+        ("step7e_motive_source7", "MOTIVE source_7"),
+        ("step7f_motive_source268", "MOTIVE source_2/6/8"),
+        ("step6a_source7_compounds", "source_7 compounds"),
+        ("step6b_source268_compounds", "source_2/6/8 compounds"),
+        ("step7b_refchemdb_filtered", "RefChemDB (filtered)"),
+        ("step7a_motive_filtered", "MOTIVE CG (filtered)"),
+        ("step6_replicate_filter", "Replicate Filter"),
+        ("step5_matched_to_profiles", "Profile Matching"),
+        ("step3_fill_rate_filter", "Fill-Rate Filter"),
+        ("step2_raw", "Raw Metadata"),
+        ("step1f_refchemdb_tiered", "RefChemDB (Tier1-3)"),
+        ("step1g_refchemdb_unfiltered", "RefChemDB (unfiltered)"),
+        ("step1e_motive_cg_all", "MOTIVE CG (all)"),
+        ("step1d_motive_cc_all", "MOTIVE CC (all)"),
+        ("step1c_compounds", "Compounds"),
+        ("step1b_orf", "ORF"),
+        ("step1a_crispr", "CRISPR"),
+        ("step0_all_jump", "All JUMP"),
+    ]
+
+    sets = []
+    labels = []
+    for filename, display_name in _STEP_ORDER:
+        path = jcp_dir / f"{filename}.parquet"
+        if not path.exists():
+            continue
+        jcps = set(pl.read_parquet(path)["Metadata_JCP2022"].to_list())
+        sets.append(jcps)
+        labels.append(f"{display_name} ({len(jcps):,})")
+
+    if len(sets) < 2:
+        print("  Need at least 2 steps for supervenn, skipping")
+        return
+
+    print(f"\n  JCP ID filtering SuperVenn ({len(sets)} steps):")
+    for label in labels:
+        print(f"    {label}")
+
+    try:
+        import matplotlib.pyplot as plt
+        from supervenn import supervenn
+
+        fig = plt.figure(figsize=(20, 12))
+        # Pass empty annotations so supervenn doesn't draw text in the rows
+        empty_labels = [""] * len(sets)
+        sv = supervenn(
+            sets,
+            empty_labels,
+            side_plots="right",
+            chunks_ordering="size",
+            sets_ordering=None,
+            widths_minmax_ratio=0.05,
+            min_width_for_annotation=0,
+            rotate_col_annotations=True,
+            col_annotations_area_height=1.2,
+        )
+        # Add labels as left-aligned y-axis tick labels
+        ax = sv.axes["main"]
+        ax.set_yticks([i + 0.5 for i in range(len(labels))])
+        ax.set_yticklabels(labels, fontsize=9)
+        ax.tick_params(axis="y", length=0, pad=5)
+        plt.title("JCP2022 ID Retention Across Pipeline Steps")
+        out_path = output_dir / "jcp_filtering_steps_supervenn.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved SuperVenn: {out_path}")
+    except ImportError:
+        print("  WARNING: supervenn not installed, skipping diagram")
+
+
+def _extract_targets(df: pl.DataFrame, sources: list[str], target_col: str) -> set[str]:
+    """Extract unique targets for wells in the given sources.
+
+    Handles pipe-separated compound targets and single gene symbols.
+    """
+    subset = df.filter(
+        pl.col("Metadata_Source").cast(pl.Utf8).is_in(sources)
+        & (pl.col(target_col) != "unknown")
+        & pl.col(target_col).is_not_null()
+    )
+    targets: set[str] = set()
+    for val in subset[target_col].to_list():
+        for gene in str(val).split("|"):
+            gene = gene.strip()
+            if gene and gene != "unknown":
+                targets.add(gene)
+    return targets
+
+
+def _plot_target_supervenn(
+    df: pl.DataFrame,
+    min_replicates: int,
+    output_dir: Path,
+) -> None:
+    """Plot a SuperVenn diagram of target overlap across source groups."""
+    # Use RefChemDB targets for compounds, Metadata_Symbol for ORF/CRISPR
+    # (both are already unified into the target columns by step 7c/7d)
+    target_col = (
+        "Metadata_RefChemDB_target"
+        if "Metadata_RefChemDB_target" in df.columns
+        else "Metadata_MOTIVE_target"
+    )
+
+    set_268 = _extract_targets(df, ["source_2", "source_6", "source_8"], target_col)
+    set_7 = _extract_targets(df, ["source_7"], target_col)
+    set_13 = _extract_targets(df, ["source_13"], target_col)
+    set_4 = _extract_targets(df, ["source_4"], target_col)
+
+    print(f"\n  Target sets ({target_col}):")
+    print(f"    source_2/6/8 (compound): {len(set_268):,} targets")
+    print(f"    source_7 (compound):     {len(set_7):,} targets")
+    print(f"    source_13 (CRISPR):      {len(set_13):,} targets")
+    print(f"    source_4 (ORF):          {len(set_4):,} targets")
+
+    try:
+        import matplotlib.pyplot as plt
+        from supervenn import supervenn
+
+        sets = [set_268, set_7, set_13, set_4]
+        labels = [
+            "source_2/6/8 (compound)",
+            "source_7 (compound)",
+            "source_13 (CRISPR)",
+            "source_4 (ORF)",
+        ]
+        fig = plt.figure(figsize=(16, 8))
+        supervenn(
+            sets,
+            labels,
+            side_plots=False,
+            chunks_ordering="size",
+            sets_ordering="minimize gaps",
+            widths_minmax_ratio=0.05,
+            min_width_for_annotation=0,
+            rotate_col_annotations=True,
+            col_annotations_area_height=1.2,
+        )
+        plt.title(
+            f"Target Overlap - All Sources "
+            f"(>={min_replicates} replicates per perturbation)"
+        )
+        out_path = output_dir / "target_all_sources_filtered_supervenn.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved SuperVenn: {out_path}")
+    except ImportError:
+        print("  WARNING: supervenn not installed, skipping diagram")
 
 
 # ============================================================================
@@ -1935,6 +2239,33 @@ def main() -> None:
             # For skip_to >= 3 we do not need the Step 1 output
             jcp_mapping = None
 
+    # Save pre-filtering RefChemDB JCP sets (if provided)
+    if args.refchemdb and Path(args.refchemdb).exists():
+        df_refchemdb_pre = pl.read_parquet(args.refchemdb)
+        df_refchemdb_pre = df_refchemdb_pre.filter(
+            pl.col("WithinModalityTier").is_in(["Tier1", "Tier2", "Tier3"])
+        )
+        refchemdb_all_jcps = (
+            df_refchemdb_pre
+            .filter(pl.col("Metadata_JCP2022").is_not_null())
+            .select("Metadata_JCP2022")
+            .unique()
+        )
+        _save_jcp_set(refchemdb_all_jcps, output_dir, "step1f_refchemdb_tiered")
+        print(f"  RefChemDB (Tier1-3): {refchemdb_all_jcps.height:,} unique JCP IDs")
+
+    # Save unfiltered RefChemDB overlap (ref_chem_overlap.csv, no tier filter)
+    refchem_overlap_path = output_dir / "ref_chem_overlap.csv"
+    if refchem_overlap_path.exists():
+        refchem_overlap_jcps = (
+            pl.read_csv(str(refchem_overlap_path))
+            .filter(pl.col("Metadata_JCP2022").is_not_null())
+            .select("Metadata_JCP2022")
+            .unique()
+        )
+        _save_jcp_set(refchem_overlap_jcps, output_dir, "step1g_refchemdb_unfiltered")
+        print(f"  RefChemDB (unfiltered): {refchem_overlap_jcps.height:,} unique JCP IDs")
+
     # ---- Step 2: Generate Raw JUMP Metadata ----
     if skip_to <= 2:
         if jcp_mapping is None:
@@ -2060,6 +2391,7 @@ def main() -> None:
             output_dir=output_dir,
             refchemdb_path=args.refchemdb,
             save_intermediates=args.save_intermediates,
+            min_replicates=args.min_replicates,
         )
     else:
         filtered_path = str(
@@ -2109,6 +2441,83 @@ def main() -> None:
     )
     print("\n  Per-group summary:")
     print(group_summary)
+
+    # ---- Dataset Summary Table ----
+    print("\n" + "=" * 70)
+    print("JUMP-LITE DATASET SUMMARY")
+    print("=" * 70)
+
+    # Calculate perturbation counts by type
+    group_mapping = {
+        "group_crispr": "CRISPR",
+        "group_orf": "ORF",
+        "group_high": "Compound-Diversity",
+        "group_low": "Compound-Bioactive",
+    }
+
+    # Get summary statistics
+    total_sources = df_final.select("Metadata_Source").n_unique()
+    total_plates = df_final.select("Metadata_Plate").n_unique()
+    total_wells = df_final.height
+
+    # Calculate total sites (6 sites per well in standard JUMP protocol)
+    sites_per_well = 4
+    total_sites = total_wells * sites_per_well
+
+    print("\nOVERALL STATISTICS:")
+    print(f"  Total sources:       {total_sources:>8,}")
+    print(f"  Total plates:        {total_plates:>8,}")
+    print(f"  Total wells:         {total_wells:>8,}")
+    print(f"  Total sites (est.):  {total_sites:>8,}  [{sites_per_well} sites/well]")
+
+    # Calculate totals (excluding negcon and other groups if present)
+    main_groups = ["group_crispr", "group_orf", "group_high", "group_low"]
+    filtered_summary = group_summary.filter(pl.col("Metadata_Group").is_in(main_groups))
+
+    total_perturbations = filtered_summary.select(pl.col("jcp_ids").sum()).item()
+    total_main_wells = filtered_summary.select(pl.col("wells").sum()).item()
+    total_main_plates = filtered_summary.select(pl.col("plates").sum()).item()
+
+    print("\n" + "=" * 70)
+    print("LATEX TABLE:")
+    print("=" * 70)
+    print()
+    print("\\begin{table}[htbp]")
+    print("\\centering")
+    print("\\caption{JUMP-lite dataset summary showing perturbation counts by type.}")
+    print("\\label{tab:jump-lite-summary}")
+    print("\\begin{tabular}{lrrrr}")
+    print("\\toprule")
+    print("Perturbation Type & Perturbations & Sources & Plates & Wells \\\\")
+    print("\\midrule")
+
+    for row in filtered_summary.iter_rows(named=True):
+        group_name = group_mapping.get(row["Metadata_Group"], row["Metadata_Group"])
+        jcp_count = row["jcp_ids"]
+        well_count = row["wells"]
+        plate_count = row["plates"]
+
+        # Count unique sources for this group
+        source_count = (
+            df_final
+            .filter(pl.col("Metadata_Group") == row["Metadata_Group"])
+            .select("Metadata_Source")
+            .n_unique()
+        )
+
+        print(f"{group_name} & {jcp_count:,} & {source_count} & {plate_count:,} & {well_count:,} \\\\")
+
+    print("\\midrule")
+    print(f"\\textbf{{Total}} & \\textbf{{{total_perturbations:,}}} & \\textbf{{{total_sources}}} & \\textbf{{{total_main_plates:,}}} & \\textbf{{{total_main_wells:,}}} \\\\")
+    print("\\bottomrule")
+    print("\\end{tabular}")
+    print("\\end{table}")
+    print()
+    print(f"NOTE: Site count assumes JUMP protocol with {sites_per_well} sites per well.")
+    print(f"      Total sites (estimated): {total_sites:,}")
+
+    # ---- SuperVenn: JCP ID filtering steps ----
+    _plot_filtering_supervenn(output_dir)
 
 
 if __name__ == "__main__":
