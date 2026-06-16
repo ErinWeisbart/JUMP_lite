@@ -152,6 +152,7 @@ def calculate_phenotypic_activity(
             num_active=("below_corrected_p", "sum"),
             mean_normalized_average_precision=("mean_normalized_average_precision", "mean"),
             median_normalized_average_precision=("mean_normalized_average_precision", "median"),
+            mean_normalized_average_precision_clipped=("mean_normalized_average_precision", lambda s: float(s.clip(lower=0).mean())),
             mean_n_replicates=("n_replicate_pairs", "mean"),
             median_n_replicates=("n_replicate_pairs", "median"),
             n_unique_compounds=(compound_col, "nunique"),
@@ -161,6 +162,7 @@ def calculate_phenotypic_activity(
     # Calculate overall mean normalized average precision
     mean_nap = float(activity_map["mean_normalized_average_precision"].mean())
     median_nap = float(activity_map["mean_normalized_average_precision"].median())
+    mean_nap_clipped = float(activity_map["mean_normalized_average_precision"].clip(lower=0).mean())
 
     return {
         "activity_ap": activity_ap,
@@ -170,6 +172,7 @@ def calculate_phenotypic_activity(
         "n_compounds": int(len(activity_map)),
         "mean_normalized_average_precision": mean_nap,
         "median_normalized_average_precision": median_nap,
+        "mean_normalized_average_precision_clipped": mean_nap_clipped,
     }
 
 
@@ -389,6 +392,7 @@ def calculate_phenotypic_consistency(
                 num_active=("below_corrected_p", "sum"),
                 mean_normalized_average_precision=("mean_normalized_average_precision", "mean"),
                 median_normalized_average_precision=("mean_normalized_average_precision", "median"),
+                mean_normalized_average_precision_clipped=("mean_normalized_average_precision", lambda s: float(s.clip(lower=0).mean())),
                 n_targets=("Metadata_target", "nunique"),
             ).reset_index()
             group_summary["pct_active"] *= 100  # Convert to percentage
@@ -396,6 +400,7 @@ def calculate_phenotypic_consistency(
         # Calculate overall mean normalized average precision
         mean_nap = float(target_map["mean_normalized_average_precision"].mean())
         median_nap = float(target_map["mean_normalized_average_precision"].median())
+        mean_nap_clipped = float(target_map["mean_normalized_average_precision"].clip(lower=0).mean())
 
         return {
             "target_consistency": target_map,
@@ -405,6 +410,7 @@ def calculate_phenotypic_consistency(
             "group_summary": group_summary,
             "mean_normalized_average_precision": mean_nap,
             "median_normalized_average_precision": median_nap,
+            "mean_normalized_average_precision_clipped": mean_nap_clipped,
         }
     except Exception as e:
         print(f"Warning: Target consistency failed: {e}")
@@ -803,8 +809,10 @@ def evaluate_all(
         results["n_compounds"] = pa["n_compounds"]
         results["PA_mean_nap"] = pa["mean_normalized_average_precision"]
         results["PA_median_nap"] = pa["median_normalized_average_precision"]
+        results["PA_mean_nap_clipped"] = pa.get("mean_normalized_average_precision_clipped", 0.0)
         print(f"  PA: {pa['pct_compounds_active']:.2f}%")
         print(f"  PA mean NAP: {pa['mean_normalized_average_precision']:.4f}")
+        print(f"  PA mean NAP (clipped): {results['PA_mean_nap_clipped']:.4f}")
 
         # Add per-group PA summary to results
         if pa.get("group_summary") is not None:
@@ -841,9 +849,11 @@ def evaluate_all(
         results["n_targets_total"] = pc["n_targets_total"]
         results["PC_mean_nap"] = pc.get("mean_normalized_average_precision", 0.0)
         results["PC_median_nap"] = pc.get("median_normalized_average_precision", 0.0)
+        results["PC_mean_nap_clipped"] = pc.get("mean_normalized_average_precision_clipped", 0.0)
         print(f"  PC: {pc['pct_targets_active']:.1f}%")
         if pc.get("mean_normalized_average_precision") is not None:
             print(f"  PC mean NAP: {pc['mean_normalized_average_precision']:.4f}")
+            print(f"  PC mean NAP (clipped): {results['PC_mean_nap_clipped']:.4f}")
 
         # Add per-group PC summary to results
         if pc.get("group_summary") is not None:
@@ -863,6 +873,7 @@ def evaluate_all(
         results["n_targets_total"] = 0
         results["PC_mean_nap"] = 0.0
         results["PC_median_nap"] = 0.0
+        results["PC_mean_nap_clipped"] = 0.0
 
     # Phenotypic Consistency on PA-replicable compounds only (Chandrasekaran-style gating)
     _pc_rep_defaults = {
