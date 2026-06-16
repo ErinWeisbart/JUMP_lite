@@ -52,49 +52,40 @@ def compute_cosine_similarity_matrix(
 
 
 def calculate_recall_at_k(
-    rankings: np.ndarray,
+    sim: np.ndarray,
     positive_mask: np.ndarray,
     k_percentages: list[float] = [1.0, 5.0, 10.0],
 ) -> dict[str, float]:
     """
-    Calculate recall at k% for given rankings.
+    Calculate recall at k% by ranking references by similarity per query.
+
+    For each query, counts how many of its positive references appear in the
+    top-k% of references when ordered by descending ``sim``. Returns the mean
+    across queries with at least one positive.
 
     Args:
-        rankings: (n_queries, n_references) array of ranks (0-indexed)
-        positive_mask: (n_queries, n_references) boolean array indicating positives
-        k_percentages: List of k values as percentages (e.g., [1, 5, 10])
+        sim: (n_queries, n_references) similarity matrix; higher = more similar.
+        positive_mask: (n_queries, n_references) bool — True where (query, ref)
+            is a true positive pair.
+        k_percentages: List of k values as percentages (e.g., [1, 5, 10]).
 
     Returns:
-        Dictionary with recall@k for each percentage
+        Dictionary with recall@k for each percentage.
     """
-    n_queries, n_references = rankings.shape
-    results = {}
+    n_queries, n_references = sim.shape
+    n_pos = positive_mask.sum(axis=1)
+    valid = n_pos > 0
+    results: dict[str, float] = {}
 
     for k_pct in k_percentages:
         k = max(1, int(n_references * k_pct / 100))
-
-        # For each query, check if any positive is in top k
-        recalls = []
-        for i in range(n_queries):
-            positives_for_query = positive_mask[i]
-            n_positives = positives_for_query.sum()
-
-            if n_positives == 0:
-                continue  # Skip queries with no positives
-
-            # Get ranks of positives
-            positive_ranks = rankings[i][positives_for_query]
-
-            # Count how many positives are in top k
-            n_retrieved = (positive_ranks < k).sum()
-
-            # Recall = fraction of positives retrieved
-            recall = n_retrieved / n_positives
-            recalls.append(recall)
-
-        # Average recall across all queries with positives
-        avg_recall = np.mean(recalls) if recalls else 0.0
-        results[f"recall@{k_pct:.0f}%"] = float(avg_recall)
+        # Top-k references per query (unsorted within top-k — fine for recall).
+        top_k = np.argpartition(-sim, k - 1, axis=1)[:, :k]
+        rows = np.arange(n_queries)[:, None]
+        hits = positive_mask[rows, top_k].sum(axis=1)
+        recall_per_query = hits[valid] / n_pos[valid]
+        avg_recall = float(recall_per_query.mean()) if recall_per_query.size else 0.0
+        results[f"recall@{k_pct:.0f}%"] = avg_recall
 
     return results
 
@@ -411,11 +402,6 @@ def evaluate_cross_modality_retrieval(
                         sub_similarity = similarity_matrix[np.ix_(query_indices_arr, ref_indices_arr)]
 
                         # Compute rankings for both directions
-                        # top: descending similarity (most similar first)
-                        # bottom: ascending similarity (least similar first)
-                        rankings_top = np.argsort(-sub_similarity, axis=1)
-                        rankings_bottom = np.argsort(sub_similarity, axis=1)
-
                         # Build positive mask
                         n_queries = len(compound_indices)
                         n_refs = len(ref_indices)
@@ -439,13 +425,17 @@ def evaluate_cross_modality_retrieval(
                         if n_positives == 0:
                             continue
 
-                        # Loop through similarity directions (innermost loop for efficiency)
+                        # Loop through similarity directions.
+                        # top: rank by descending sim. bottom: rank by ascending sim
+                        # (== descending -sim).
                         for sim_direction in similarity_directions:
-                            rankings = rankings_top if sim_direction == "top" else rankings_bottom
-
-                            # Calculate recall at k
+                            sim_for_recall = (
+                                sub_similarity
+                                if sim_direction == "top"
+                                else -sub_similarity
+                            )
                             recall_results = calculate_recall_at_k(
-                                rankings, positive_mask, k_percentages
+                                sim_for_recall, positive_mask, k_percentages
                             )
 
                             subset_name = f"{compound_group}_{tier_name}_{modality_clean}_{active_mode_name}_vs_{ref_name}_{sim_direction}"
@@ -568,10 +558,6 @@ def evaluate_cross_modality_retrieval(
 
                     sub_similarity = similarity_matrix[np.ix_(query_indices_arr, ref_indices_arr)]
 
-                    # Compute rankings for both directions
-                    rankings_top = np.argsort(-sub_similarity, axis=1)
-                    rankings_bottom = np.argsort(sub_similarity, axis=1)
-
                     # Build positive mask (matching gene symbols)
                     n_queries = len(query_indices)
                     n_refs = len(ref_indices)
@@ -596,13 +582,16 @@ def evaluate_cross_modality_retrieval(
                         print(f"  {active_mode_name}: No matching gene symbols found")
                         continue
 
-                    # Loop through similarity directions
+                    # Loop through similarity directions.
+                    # top: rank by descending sim. bottom: rank by ascending sim.
                     for sim_direction in similarity_directions:
-                        rankings = rankings_top if sim_direction == "top" else rankings_bottom
-
-                        # Calculate recall at k
+                        sim_for_recall = (
+                            sub_similarity
+                            if sim_direction == "top"
+                            else -sub_similarity
+                        )
                         recall_results = calculate_recall_at_k(
-                            rankings, positive_mask, k_percentages
+                            sim_for_recall, positive_mask, k_percentages
                         )
 
                         subset_name = f"{query_group}_vs_{ref_group}_{active_mode_name}_{sim_direction}"
