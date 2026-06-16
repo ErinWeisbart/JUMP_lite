@@ -417,6 +417,17 @@ saturation-fully-random-compound-low-pc:
         --groups group_low --pc-only
     cp analysis/output/saturation_fully_random_compound_low_pc/saturation_PC_mean_nap.png aux_figures/saturation_fully_random_compound_low_pc.png
 
+# Saturation analysis: proper (normalize after subsampling, zero leakage)
+saturation-proper:
+    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py
+    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png aux_figures/
+
+# Saturation analysis: proper - pilot (2 models, 3 configs, 3 seeds)
+saturation-proper-pilot:
+    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py \
+        --models morphem cellprofiler --n-configs 3 --n-seeds 3
+    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png aux_figures/saturation_proper_pilot.png
+
 # Saturation analysis: replot from existing results CSV
 saturation-plot:
     cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
