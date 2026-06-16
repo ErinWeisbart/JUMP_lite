@@ -1113,6 +1113,25 @@ motive-plot-cross plot_dir selection="best_avg_codec":
         --best-selection {{ selection }} \
         --show-all-points
 
+# Per-codec model-rank heatmap across the 11 tasks from the combined
+# RefChem + MOTIVE delta table. One PNG per codec (raw / hq / mq / d20),
+# rows = models sorted by mean per-task-normalised score. RefChem CSV uses
+# the script's default path (variance_first_v11_lite/sweep_results.csv);
+# `selection` mirrors gather_sweep_results --best-selection.
+model-task-rank plot_dir selection="best_avg_codec":
+    uv run python analysis/plot_model_task_rank.py \
+        --motive-csv {{ plot_dir }}/motive_sweep_summary.csv \
+        --output-dir {{ plot_dir }} \
+        --best-selection {{ selection }} \
+        --codecs raw,hq,mq,d20
+
+# Combined RefCam (PA/PC NAP) + MOTIVE (CC/GG/CG -> CRISPR) codec-delta
+# table. Reads sweep_results.csv from JUMP_core/.../variance_first_v11_lite
+# and motive_sweep_summary.csv from motive_large_strict. Writes both the
+# full table and a summary-only variant.
+combined-codec-delta-table:
+    uv run python analysis/generate_combined_codec_delta_table.py
+
 # Run MOTIVE evaluation across every output.parquet under a sweep dir.
 # Idempotent — skips a config if its metrics.json already exists.
 #
