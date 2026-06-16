@@ -983,6 +983,18 @@ results sweep_dir metric="nap_balanced":
         --plot --filter-degenerate \
         --best-metric {{ metric }}
 
+# Aggregate restricted to 5 families (cp_measure + dinov2 + morphem + openphenom + subcell__clip01)
+# and 6 codecs (hq, e3, d2_e8, mq, lq, d10) — i.e. cp_measure's codec lineup minus d15/d30.
+# Output goes to <sweep_dir>/plots_5fam_cp_codecs/ to keep separate from the default plots/.
+results-5fam-cp-codecs sweep_dir:
+    cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
+        --sweep-dir {{ sweep_dir }} \
+        --plot-dir {{ sweep_dir }}/plots_5fam_cp_codecs \
+        --plot --filter-degenerate \
+        --best-metric nap_balanced \
+        --exclude-families cell_count dinov2_random \
+        --exclude-codecs mq_new d20_e2 d50 d15 d30
+
 # One-shot: curate MOTIVE annotations + map published splits to JCP2022.
 # Pass the local path of the upstream MOTIVE split file as the only argument.
 motive-curate motive_splits_path:

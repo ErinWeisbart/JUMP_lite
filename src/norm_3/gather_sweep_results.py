@@ -35,8 +35,8 @@ COMPRESSION_DISPLAY = {
     "zstd_filtered_raw": "raw_f",
     "jpegxl_lossy_hq_raw": "hq",
     "jpegxl_lossy_hq_filtered_raw": "hq_f",
-    "jpegxl_lossy_effort_3_raw": "effort_3",
-    "jpegxl_lossy_effort_3_filtered_raw": "effort_3_f",
+    "jpegxl_lossy_effort_3_raw": "e3",
+    "jpegxl_lossy_effort_3_filtered_raw": "e3_f",
     "jpegxl_lossy_mq_raw": "mq",
     "jpegxl_lossy_mq_filtered_raw": "mq_f",
     "jpegxl_lossy_lq_raw": "lq",
@@ -3244,6 +3244,183 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
     print(f"Saved: {output_dir / fname}")
 
 
+def generate_nap_pa_vs_pc_panel_a(pdf, output_dir: Path, model_colors: dict,
+                                  models: list, best_idx: dict, family_configs: dict | None,
+                                  best_metric: str = "balanced",
+                                  best_selection: str = "per_codec",
+                                  show_all_points: bool = False,
+                                  codec_filter: list[str] | None = None,
+                                  filename_suffix: str = ""):
+    """Panel A of sweep_nap_pa_vs_pc_combined, rendered standalone.
+
+    Uses the identical figure size + GridSpec as generate_nap_pa_vs_pc_combined
+    and only adds the left-half subplot (gs[:, 0:2]). bbox_inches='tight' crops
+    away the unused right half on save, preserving panel A's exact geometry.
+
+    ``codec_filter`` (if set) restricts both the best-per-codec dots and the
+    optional background cloud to the listed codec labels (e.g. ``["raw", "mq"]``).
+    ``filename_suffix`` is appended to the saved PNG name to distinguish variants.
+    """
+    import matplotlib.gridspec as gridspec
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if "PA_mean_nap" not in pdf.columns or "PC_mean_nap" not in pdf.columns:
+        print("NAP metrics not available, skipping panel A.")
+        return
+
+    import pandas as pd
+    best_rows = [pdf.loc[bi] for bi in best_idx.values()]
+    if not best_rows:
+        print("No data for panel A.")
+        return
+    best = pd.DataFrame(best_rows)
+    best["comp_level"] = best["display_name"].apply(_get_compression_level)
+    _max_level = max(max(COMPRESSION_LEVEL.values()), 1)
+    best["dot_size"] = best["comp_level"].apply(
+        lambda lvl: 30 + 950 * np.exp(-2.5 * lvl / _max_level)
+    )
+    best["family"] = best["model"].apply(_get_model_family)
+    best["codec_label"] = best["display_name"].apply(_get_codec_label)
+    best = best.dropna(subset=["PA_mean_nap", "PC_mean_nap"])
+    if codec_filter is not None:
+        keep = set(codec_filter)
+        before = len(best)
+        best = best[best["codec_label"].isin(keep)]
+        print(f"Panel A codec filter {sorted(keep)}: {before} -> {len(best)} rows")
+    if best.empty:
+        print("No valid NAP data for panel A.")
+        return
+
+    n_detail_rows = 3
+    fig_w, fig_h = 24, 16
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    gs = gridspec.GridSpec(
+        n_detail_rows, 4, figure=fig,
+        width_ratios=[1, 1, 1, 1],
+        hspace=0.35, wspace=0.35,
+    )
+
+    fs_title = 32
+    fs_axis = 24
+    fs_tick = 18
+    fs_legend = 17
+
+    ax_ov = fig.add_subplot(gs[:, 0:2])
+
+    pdf_all = None
+    if show_all_points:
+        pdf_all = pdf.dropna(subset=["PA_mean_nap", "PC_mean_nap"]).copy()
+        pdf_all["family"] = pdf_all["model"].apply(_get_model_family)
+        pdf_all = pdf_all[pdf_all["family"] != "unknown"]
+        if codec_filter is not None:
+            pdf_all["codec_label"] = pdf_all["display_name"].apply(_get_codec_label)
+            pdf_all = pdf_all[pdf_all["codec_label"].isin(set(codec_filter))]
+        for fam, fam_df in pdf_all.groupby("family"):
+            color = FAMILY_SET2_COLOR.get(fam, (0.5, 0.5, 0.5))
+            ax_ov.scatter(
+                fam_df["PC_mean_nap"], fam_df["PA_mean_nap"],
+                c=[color], s=60, alpha=0.42,
+                edgecolors="none", zorder=2,
+            )
+
+    families_seen: set = set()
+    # codec_label -> comp_level for codecs actually drawn (drives the size
+    # legend). Dedupe by short codec label (e.g. "raw", "hq", "d20") rather
+    # than the full per-family display_name so each codec appears once.
+    codecs_seen: dict[str, int] = {}
+    for _, row in best.iterrows():
+        pa_nap, pc_nap = row["PA_mean_nap"], row["PC_mean_nap"]
+        family = row["family"]
+        color = FAMILY_SET2_COLOR.get(family, (0.5, 0.5, 0.5))
+        ax_ov.scatter(
+            pc_nap, pa_nap,
+            c=[color], s=row["dot_size"], alpha=0.85,
+            edgecolors="black", linewidths=0.8, zorder=5,
+        )
+        families_seen.add(family)
+        codec_label = _get_codec_label(row["display_name"])
+        if codec_label and codec_label not in codecs_seen:
+            codecs_seen[codec_label] = int(row["comp_level"])
+
+    nap_pa_vals = best["PA_mean_nap"]
+    nap_pc_vals = best["PC_mean_nap"]
+    pc_max = nap_pc_vals.max() if len(nap_pc_vals) > 0 else 0
+    pa_max = nap_pa_vals.max() if len(nap_pa_vals) > 0 else 0
+    if show_all_points and pdf_all is not None and len(pdf_all) > 0:
+        pc_max = max(pc_max, pdf_all["PC_mean_nap"].max())
+        pa_max = max(pa_max, pdf_all["PA_mean_nap"].max())
+    ax_ov.set_xlim(0, pc_max * 1.15 if pc_max > 0 else 0.15)
+    ax_ov.set_ylim(0, pa_max * 1.15 if pa_max > 0 else 0.5)
+    _add_balanced_score_lines(ax_ov, is_nap=True)
+    ax_ov.set_xlabel("PC Mean NAP", fontsize=fs_axis, fontweight="bold")
+    ax_ov.set_ylabel("PA Mean NAP", fontsize=fs_axis, fontweight="bold")
+    ax_ov.tick_params(axis="both", labelsize=fs_tick)
+    ax_ov.set_title("Mean NAP: PA vs PC", fontsize=fs_title, fontweight="bold")
+    ax_ov.spines["top"].set_visible(False)
+    ax_ov.spines["right"].set_visible(False)
+    # Two side-by-side legends at lower right: family color key + codec→size
+    # key. Both use empty-scatter handles so the legend markers inherit the
+    # exact styling/sizes of the actual scatter dots.
+    _fam_canonical_order = list(MODEL_FAMILIES.keys())
+    _fam_order = sorted(
+        families_seen,
+        key=lambda f: _fam_canonical_order.index(f) if f in _fam_canonical_order else 999,
+    )
+    _fam_handles = [
+        ax_ov.scatter([], [], c=[FAMILY_SET2_COLOR.get(f, (0.5, 0.5, 0.5))],
+                      s=200, alpha=0.85, edgecolors="black", linewidths=0.8)
+        for f in _fam_order
+    ]
+    _fam_labels = [FAMILY_DISPLAY.get(f, f) for f in _fam_order]
+    fam_leg = ax_ov.legend(handles=_fam_handles, labels=_fam_labels,
+                           loc="lower right",
+                           bbox_to_anchor=(0.98, 0.02),
+                           bbox_transform=ax_ov.transAxes,
+                           fontsize=fs_legend,
+                           framealpha=0.9, edgecolor="gray",
+                           title="family", title_fontsize=fs_legend,
+                           labelspacing=1.0, borderpad=0.8)
+    fam_leg.get_title().set_fontweight("bold")
+    ax_ov.add_artist(fam_leg)
+
+    if codecs_seen:
+        # Codec legend handles via empty scatters with s=dot_size, so legend
+        # marker size matches the actual scatter dot size for each codec.
+        _max_lvl = max(max(COMPRESSION_LEVEL.values()), 1)
+        _codec_items = sorted(codecs_seen.items(), key=lambda kv: kv[1])
+        _codec_handles = []
+        _codec_labels = []
+        for _label, _lvl in _codec_items:
+            _dot_s = 30 + 950 * float(np.exp(-2.5 * _lvl / _max_lvl))
+            _codec_handles.append(ax_ov.scatter(
+                [], [], c=["lightgray"], s=_dot_s, alpha=0.85,
+                edgecolors="black", linewidths=0.8,
+            ))
+            _codec_labels.append(_label)
+        codec_leg = ax_ov.legend(handles=_codec_handles, labels=_codec_labels,
+                                 loc="lower right",
+                                 bbox_to_anchor=(0.62, 0.02),
+                                 bbox_transform=ax_ov.transAxes,
+                                 fontsize=fs_legend,
+                                 framealpha=0.9, edgecolor="gray",
+                                 title="codec", title_fontsize=fs_legend,
+                                 labelspacing=1.8, borderpad=0.8)
+        codec_leg.get_title().set_fontweight("bold")
+
+    ax_ov.text(-0.02, 1.02, "a", transform=ax_ov.transAxes,
+               fontsize=fs_title + 4, fontweight="bold", va="bottom", ha="right")
+
+    _sel_suffix = {"zstd_reference": "_zstd_pinned", "best_any_codec": "_best_any_codec",
+                   "best_avg_codec": "_best_avg_codec"}.get(best_selection, "")
+    _all_suffix = "_with_all_points" if show_all_points else ""
+    fname = f"sweep_nap_pa_vs_pc_panel_a{_sel_suffix}{filename_suffix}{_all_suffix}.png"
+    plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {output_dir / fname}")
+
+
+
+
 def generate_per_group_plot(pdf, output_dir: Path, model_colors: dict,
                             models: list, best_idx: dict,
                             best_metric: str = "balanced",
@@ -3832,6 +4009,292 @@ def generate_codec_delta_from_raw_plot(pdf, output_dir: Path, model_colors: dict
     plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_dir / fname}")
+
+
+def generate_codec_delta_balanced_violin(pdf, output_dir: Path, model_colors: dict,
+                                          models: list, best_idx: dict, best_col: str,
+                                          best_metric: str = "balanced",
+                                          best_selection: str = "per_codec"):
+    """Violin/boxen plots of NAP Balanced delta vs raw/zstd baseline, per codec.
+
+    Re-renders the last subfigure of `codec_delta_from_raw_abs_only.png`
+    (NAP Balanced) in the style of `plot_cell_level_iou.py` /
+    `compare_segmentations.py`: codec on the x-axis (canonical sort rank),
+    delta on the y-axis, codecs colored by a viridis quality gradient
+    (`hue='codec'`, `palette='viridis'`, `legend=False`, matching
+    `compare_segmentations.py:1675`).
+
+    Emits violin / violin+p5p95 / boxen variants for both absolute Δ and
+    percentage drop Δ%, plus one figure per model family in a subfolder.
+    """
+    import pandas as pd
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    metric_col = "nap_balanced"
+    if metric_col not in pdf.columns or pdf[metric_col].isna().all():
+        print(f"{metric_col} not available, skipping balanced delta violin plot.")
+        return
+
+    # Identify families with a 'raw' or 'zstd' baseline codec
+    family_models: dict[str, list[str]] = {}
+    for m in models:
+        fam = _get_model_family(m)
+        family_models.setdefault(fam, []).append(m)
+
+    families_with_raw: dict[str, tuple[str, list[str]]] = {}
+    for fam, mlist in family_models.items():
+        baseline_model = None
+        others = []
+        for m in mlist:
+            codec = _get_codec_label(get_display_name(m))
+            if codec in ("raw", "zstd") and baseline_model is None:
+                baseline_model = m
+            else:
+                others.append(m)
+        if baseline_model is not None and others:
+            families_with_raw[fam] = (baseline_model, others)
+
+    if not families_with_raw:
+        print("No families with a 'raw' or 'zstd' baseline found, skipping balanced delta violin.")
+        return
+
+    # Compute deltas (codec_value - baseline_value) per shared config
+    delta_records = []
+    for fam, (raw_model, others) in families_with_raw.items():
+        raw_df = pdf[pdf["model"] == raw_model]
+        if raw_df.empty:
+            continue
+        raw_by_config = raw_df.set_index("config")
+        for other_model in others:
+            other_df = pdf[pdf["model"] == other_model]
+            if other_df.empty:
+                continue
+            other_by_config = other_df.set_index("config")
+            shared_configs = raw_by_config.index.intersection(other_by_config.index)
+            if len(shared_configs) == 0:
+                continue
+            codec_label = _get_codec_label(get_display_name(other_model))
+            for cfg in shared_configs:
+                raw_val = raw_by_config.loc[cfg, metric_col]
+                other_val = other_by_config.loc[cfg, metric_col]
+                if hasattr(raw_val, "__len__"):
+                    raw_val = raw_val.iloc[0]
+                if hasattr(other_val, "__len__"):
+                    other_val = other_val.iloc[0]
+                if np.isnan(raw_val) or np.isnan(other_val):
+                    continue
+                # Cap negative metric values to zero (matches abs-only panel)
+                raw_val = max(0.0, raw_val)
+                other_val = max(0.0, other_val)
+                delta_records.append({
+                    "family": fam,
+                    "codec": codec_label,
+                    "model": other_model,
+                    "delta": other_val - raw_val,
+                    "raw_val": raw_val,
+                })
+
+    if not delta_records:
+        print("No delta records computed, skipping balanced delta violin plot.")
+        return
+
+    df_plot = pd.DataFrame(delta_records)
+    # Signed percent change vs raw (matches the _pct_only panel of
+    # codec_delta_from_raw): negative = performance drop, positive = gain.
+    df_plot["delta_pct"] = np.where(
+        df_plot["raw_val"].abs() > 1e-12,
+        df_plot["delta"] / df_plot["raw_val"].abs() * 100,
+        np.nan,
+    )
+    # Codec performance as a percentage of raw baseline. 100% = equal,
+    # <100% = degraded, >100% = improved. Reference line drawn at 100.
+    df_plot["pct_of_raw"] = np.where(
+        df_plot["raw_val"].abs() > 1e-12,
+        (df_plot["raw_val"] + df_plot["delta"]) / df_plot["raw_val"] * 100,
+        np.nan,
+    )
+
+    # Codec order: canonical sort rank (lossless first, heavier-lossy later)
+    codec_rank: dict[str, int] = {}
+    for m in models:
+        cl = _get_codec_label(get_display_name(m))
+        rank = _get_codec_sort_rank(m)
+        if cl not in codec_rank or rank < codec_rank[cl]:
+            codec_rank[cl] = rank
+    codec_order = sorted(df_plot["codec"].unique(), key=lambda c: codec_rank.get(c, 9999))
+
+    # Family ordering for the per-model loop (canonical order used elsewhere)
+    _FAMILY_PLOT_ORDER = [
+        "cell_count", "cell_count_lite",
+        "cellprofiler", "cellprofiler_lite", "cp_measure", "cp_measure_filtered", "cp_measure_fbs",
+        "dinov2", "dinov2_rr", "dinov2_lite", "dinov2_490",
+        "morphem", "morphem_rr", "morphem_lite",
+        "openphenom", "openphenom_rr", "openphenom_lite",
+        "openphenom_stdscale", "openphenom_nonclip", "openphenom_stdscale_false",
+        "openphenom_8clip_std",
+        "subcell", "subcell_rr", "subcell_lite", "subcell__clip01", "subcell__clip01_lite",
+        "subcell__nonstd", "subcell_nonstd", "subcell_wrongchannels",
+        "dinov2_random", "dinov2_random_rr", "dinov2_random_lite",
+    ]
+    _fam_rank = {f: i for i, f in enumerate(_FAMILY_PLOT_ORDER)}
+    fam_order_keys = sorted(df_plot["family"].unique(),
+                             key=lambda f: _fam_rank.get(f, len(_FAMILY_PLOT_ORDER)))
+
+    # Display labels for codecs (Title Case where we have nice names)
+    _known_labels = {
+        "lq": "Low", "mq": "Medium", "e3": "Mid-High", "effort_3": "Mid-High", "hq": "High",
+        "d2_e8": "D2 E8", "d10": "D10", "d15": "D15",
+        "d20_e2": "D20 E2", "d25": "D25", "d30": "D30",
+    }
+    codec_labels = {c: _known_labels.get(c, c.upper()) for c in codec_order}
+
+    _sel_suffix = {
+        "zstd_reference": "_zstd_pinned",
+        "best_any_codec": "_best_any_codec",
+        "best_avg_codec": "_best_avg_codec",
+    }.get(best_selection, "")
+
+    # Match the canvas used by analysis/segmentation/plot_cell_level_iou.py
+    # (fixed 7x7 inches for every violin/boxen panel).
+    fig_w = 7
+    fig_h = 7
+
+    # Three value variants:
+    #   - absolute delta (codec − raw), reference at 0
+    #   - signed percent change ((codec − raw) / |raw| · 100), reference at 0
+    #   - codec performance as % of raw (codec / raw · 100), reference at 100,
+    #     y-limited to [0, 115] so the 100% baseline sits near the top.
+    VARIANTS = [
+        ("delta",      "Δ NAP Balanced",            "",            "{:+.3f}",  0.0,   None),
+        ("delta_pct",  "% Change in NAP Balanced",  "_pct_change", "{:+.1f}%", 0.0,   None),
+        ("pct_of_raw", "NAP Balanced (% of Raw)",   "_pct_of_raw", "{:.1f}%",  100.0, (0, 160)),
+    ]
+
+    per_model_dir = output_dir / "codec_delta_balanced_per_model"
+    per_model_dir.mkdir(parents=True, exist_ok=True)
+
+    def _safe_name(s: str) -> str:
+        return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in s)
+
+    def _violin(ax, data, order):
+        sns.violinplot(
+            data=data, x="codec", y=value_col,
+            hue="codec", order=order, hue_order=order,
+            palette="viridis", inner="box", cut=0,
+            legend=False, ax=ax,
+        )
+
+    def _boxen(ax, data, order):
+        sns.boxenplot(
+            data=data, x="codec", y=value_col,
+            hue="codec", order=order, hue_order=order,
+            palette="viridis", legend=False, ax=ax,
+        )
+
+    def _decorate(ax, order, title):
+        ax.axhline(ref_y, color="black", linewidth=1.0, linestyle="-", alpha=0.6, zorder=1)
+        ax.set_xlabel("Compression Quality", fontsize=24, fontweight="bold")
+        ax.set_ylabel(ylabel, fontsize=24, fontweight="bold")
+        ax.set_title(title, fontsize=26, fontweight="bold")
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels([codec_labels[c] for c in order], fontsize=20,
+                           rotation=45, ha="right")
+        ax.tick_params(axis="both", labelsize=20)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+
+    def _annotate_p5_p95(ax, data, order):
+        for i, codec in enumerate(order):
+            vals = data.loc[data["codec"] == codec, value_col].dropna().values
+            if len(vals) == 0:
+                continue
+            p5 = np.percentile(vals, 5)
+            p95 = np.percentile(vals, 95)
+            ax.scatter([i], [p95], marker="_", s=300, linewidths=3,
+                       color="black", zorder=10)
+            ax.annotate(annot_fmt.format(p95), (i, p95), textcoords="offset points",
+                        xytext=(0, 8), ha="center", fontsize=10, fontweight="bold",
+                        color="black")
+            ax.scatter([i], [p5], marker="_", s=300, linewidths=3,
+                       color="black", zorder=10)
+            ax.annotate(annot_fmt.format(p5), (i, p5), textcoords="offset points",
+                        xytext=(0, -14), ha="center", fontsize=10, fontweight="bold",
+                        color="black")
+
+    for value_col, ylabel, file_sfx, annot_fmt, ref_y, ylim in VARIANTS:
+        # --- Combined: Violin ---
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        _violin(ax, df_plot, codec_order)
+        _decorate(ax, codec_order, ylabel)
+        plt.tight_layout()
+        out = output_dir / f"codec_delta_balanced_violin{file_sfx}{_sel_suffix}.png"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved combined {ylabel} violin to: {out}")
+
+        # --- Combined: Violin with p5/p95 markers ---
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        _violin(ax, df_plot, codec_order)
+        _decorate(ax, codec_order, f"{ylabel} (5th & 95th percentile)")
+        _annotate_p5_p95(ax, df_plot, codec_order)
+        plt.tight_layout()
+        out = output_dir / f"codec_delta_balanced_violin_p5_p95{file_sfx}{_sel_suffix}.png"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved combined {ylabel} violin (p5/p95) to: {out}")
+
+        # --- Combined: Boxen ---
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        _boxen(ax, df_plot, codec_order)
+        _decorate(ax, codec_order, ylabel)
+        plt.tight_layout()
+        out = output_dir / f"codec_delta_balanced_boxen{file_sfx}{_sel_suffix}.png"
+        plt.savefig(out, dpi=150, bbox_inches="tight")
+        plt.close()
+        print(f"Saved combined {ylabel} boxen to: {out}")
+
+        # --- Per-model figures (one per family, same fig size) ---
+        for fam_key in fam_order_keys:
+            fam_disp = FAMILY_DISPLAY.get(fam_key, fam_key)
+            df_fam = df_plot[df_plot["family"] == fam_key]
+            if df_fam.empty:
+                continue
+            fam_codec_order = [c for c in codec_order if c in set(df_fam["codec"].unique())]
+            if not fam_codec_order:
+                continue
+            slug = _safe_name(fam_key)
+
+            # Violin
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            _violin(ax, df_fam, fam_codec_order)
+            _decorate(ax, fam_codec_order, ylabel)
+            plt.tight_layout()
+            plt.savefig(per_model_dir / f"codec_delta_balanced_violin{file_sfx}__{slug}{_sel_suffix}.png",
+                        dpi=150, bbox_inches="tight")
+            plt.close()
+
+            # Violin + p5/p95
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            _violin(ax, df_fam, fam_codec_order)
+            _decorate(ax, fam_codec_order, f"{ylabel} (5th & 95th percentile)")
+            _annotate_p5_p95(ax, df_fam, fam_codec_order)
+            plt.tight_layout()
+            plt.savefig(per_model_dir / f"codec_delta_balanced_violin_p5_p95{file_sfx}__{slug}{_sel_suffix}.png",
+                        dpi=150, bbox_inches="tight")
+            plt.close()
+
+            # Boxen
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            _boxen(ax, df_fam, fam_codec_order)
+            _decorate(ax, fam_codec_order, ylabel)
+            plt.tight_layout()
+            plt.savefig(per_model_dir / f"codec_delta_balanced_boxen{file_sfx}__{slug}{_sel_suffix}.png",
+                        dpi=150, bbox_inches="tight")
+            plt.close()
+
+        print(f"Saved per-model {ylabel} plots → {per_model_dir}/")
+
+
 
 
 def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_colors: dict,
@@ -4546,8 +5009,17 @@ def main():
         _timed("nap_pa_vs_pc_targets", generate_nap_pa_vs_pc_targets_best_balanced, pdf_plot, plot_dir, model_colors, **fkw)
         _timed("nap_pa_vs_pc_per_model", generate_nap_pa_vs_pc_per_model, pdf_plot, plot_dir, model_colors, **fkw)
         _timed("nap_pa_vs_pc_combined", generate_nap_pa_vs_pc_combined, pdf_plot, plot_dir, model_colors, **fkw)
+        _timed("nap_pa_vs_pc_combined_all_points", generate_nap_pa_vs_pc_combined, pdf_plot, plot_dir, model_colors, **fkw, show_all_points=True)
+        _timed("nap_pa_vs_pc_panel_a", generate_nap_pa_vs_pc_panel_a, pdf_plot, plot_dir, model_colors, **fkw)
+        _timed("nap_pa_vs_pc_panel_a_all_points", generate_nap_pa_vs_pc_panel_a, pdf_plot, plot_dir, model_colors, **fkw, show_all_points=True)
+        # Raw + medium-quality only — strips out hq/d20/etc. for a compact comparison.
+        _timed("nap_pa_vs_pc_panel_a_raw_mq", generate_nap_pa_vs_pc_panel_a, pdf_plot, plot_dir, model_colors,
+               **fkw, codec_filter=["raw", "mq"], filename_suffix="_raw_mq")
+        _timed("nap_pa_vs_pc_panel_a_raw_mq_all_points", generate_nap_pa_vs_pc_panel_a, pdf_plot, plot_dir, model_colors,
+               **fkw, show_all_points=True, codec_filter=["raw", "mq"], filename_suffix="_raw_mq")
         _timed("codec_delta_from_raw", generate_codec_delta_from_raw_plot, pdf_plot, plot_dir, model_colors, **bkw)
         _timed("codec_delta_from_raw_groups", generate_codec_delta_from_raw_groups_plot, pdf_plot, plot_dir, model_colors, **bkw)
+        _timed("codec_delta_balanced_violin", generate_codec_delta_balanced_violin, pdf_plot, plot_dir, model_colors, **bkw)
 
         if not args.pa_vs_pc:
             _timed("all_metrics", generate_all_metrics_plot, pdf_plot, plot_dir, model_colors, **bkw)
