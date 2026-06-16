@@ -1167,3 +1167,30 @@ sphering-demo:
 # Gather key figures into main_figures/
 gather-figures:
     bash scripts/gather_figures.sh
+
+# Render N random wells as RGB PNGs (optionally high-PA "good" wells)
+visualize-well output="aux_figures/random_well.png" rank_by="" top_pct="10" n="1" group="":
+    uv run python scripts/visualize_well.py {{ output }} --n {{ n }} \
+        {{ if rank_by != "" { "--rank-by " + rank_by + " --top-pct " + top_pct } else { "" } }} \
+        {{ if group != "" { "--group " + group } else { "" } }}
+
+# Render N wells whose NAP is near a target value (e.g. 0.98), within a group.
+# cc_min/cc_max bound cell_count_ratio (well count / plate-DMSO median count)
+# to filter out cytotoxic outliers; default keeps healthy populations only.
+visualize-well-nap output rank_by group target_nap="0.98" tol="0.02" n="10" cc_min="0.5" cc_max="2.0":
+    uv run python scripts/visualize_well.py {{ output }} --n {{ n }} \
+        --rank-by {{ rank_by }} --group {{ group }} \
+        --target-nap {{ target_nap }} --nap-tol {{ tol }} \
+        --cc-min {{ cc_min }} --cc-max {{ cc_max }}
+
+# Render N random negcon wells from a given group (uses raw feature parquet)
+visualize-negcons output features group n="10":
+    uv run python scripts/visualize_well.py {{ output }} --n {{ n }} \
+        --negcon-features {{ features }} --group {{ group }}
+
+# Compute per-well phenotypic-activity AP for one (model, codec)
+well-activity model="morphem__std_all__tvn_efaar_e0.5_c304__noprune" codec="raw":
+    uv run python analysis/well_activity.py \
+        --features src/norm_3/data/features/best_configs_lite/{{ model }}.parquet \
+        --codec {{ codec }} \
+        --output analysis/output/well_activity/{{ model }}__{{ codec }}.parquet
