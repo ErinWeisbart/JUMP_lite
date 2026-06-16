@@ -972,6 +972,175 @@ results sweep_dir metric="nap_balanced":
         --plot --filter-degenerate \
         --best-metric {{ metric }}
 
+# One-shot: curate MOTIVE annotations + map published splits to JCP2022.
+# Pass the local path of the upstream MOTIVE split file as the only argument.
+motive-curate motive_splits_path:
+    uv run python scripts/curate_motive.py \
+        --metadata metadata/metadata_dataset_filtered_4reps.parquet \
+        --annotations-cc {{ annotations_cc }} \
+        --inchikey-map metadata/inchikey_to_jcp2022_mapping_compound_compound.csv \
+        --motive-splits-path {{ motive_splits_path }} \
+        --output-dir metadata/
+
+# Run MOTIVE evaluation on a single output.parquet (mirrors the PA invocation)
+motive-eval input output:
+    uv run python evaluation/evaluate_motive.py \
+        --input {{ input }} \
+        --output {{ output }} \
+        --annotations metadata/motive_annotations.parquet \
+        --splits metadata/motive_splits.parquet
+
+# Curate the STRICT variant of MOTIVE annotations (rel_type-filtered).
+# Writes metadata/motive_annotations_strict.parquet alongside the existing
+# full file. Splits are mode-agnostic — reuse motive_splits.parquet from the
+# full curate run.
+motive-curate-strict:
+    uv run python scripts/curate_motive.py \
+        --mode strict \
+        --metadata metadata/metadata_dataset_filtered_4reps.parquet \
+        --inchikey-map metadata/inchikey_to_jcp2022_mapping_compound_compound.csv \
+        --output-dir metadata/ \
+        --skip-splits
+
+# Curate the ULTRA-STRICT variant: completed direct-binding allowlist on CG,
+# action-class-aware CC bridge, tightened GG (PPI/binding/PTM only).
+# Writes metadata/motive_annotations_ultra_strict.parquet alongside the
+# existing files. Splits are mode-agnostic — reuse motive_splits.parquet.
+motive-curate-ultra-strict:
+    uv run python scripts/curate_motive.py \
+        --mode ultra_strict \
+        --metadata metadata/metadata_dataset_filtered_4reps.parquet \
+        --inchikey-map metadata/inchikey_to_jcp2022_mapping_compound_compound.csv \
+        --output-dir metadata/ \
+        --skip-splits
+
+# Filter a sweep_results.csv to the top-N configs per (family, codec) by metric.
+# Writes a text file of absolute output.parquet paths usable by motive-eval-list.
+motive-filter-top sweep_results sweep_dir top_n="50" metric="PA_mean_nap" out_list="metadata/motive_top_configs.txt":
+    uv run python analysis/filter_top_configs.py \
+        --sweep-results {{ sweep_results }} \
+        --sweep-dir {{ sweep_dir }} \
+        --top-n {{ top_n }} \
+        --metric {{ metric }} \
+        --out {{ out_list }} \
+        --force
+
+# Run MOTIVE eval on a precomputed list of output.parquet paths (one per line).
+# Mirrors the sweep-dir → output-dir subtree exactly like motive-eval-sweep.
+motive-eval-list sweep_dir output_dir list_file jobs="4" annotations="metadata/motive_annotations.parquet" splits="metadata/motive_splits.parquet":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SWEEP="{{ sweep_dir }}"
+    OUT_BASE="{{ output_dir }}"
+    LIST="{{ list_file }}"
+    ANN="{{ annotations }}"
+    SPLITS="{{ splits }}"
+    export SWEEP OUT_BASE ANN SPLITS
+    [ -f "$ANN" ]    || { echo "ERROR: annotations file not found: $ANN" >&2; exit 1; }
+    [ -f "$SPLITS" ] || { echo "ERROR: splits file not found: $SPLITS" >&2; exit 1; }
+    [ -f "$LIST" ]   || { echo "ERROR: list file not found: $LIST" >&2; exit 1; }
+    n=$(wc -l < "$LIST")
+    echo "[motive-eval-list] processing $n parquets from $LIST"
+    cat "$LIST" \
+      | xargs -n1 -P{{ jobs }} -I{} bash -c '
+          in="$1"
+          [ -f "$in" ] || { echo "WARN missing input: $in" >&2; exit 0; }
+          in_dir="$(dirname "$in")"
+          rel="${in_dir#${SWEEP%/}/}"
+          out="$OUT_BASE/$rel/motive"
+          mkdir -p "$out"
+          uv run python evaluation/evaluate_motive.py \
+              --input "$in" --output "$out" \
+              --annotations "$ANN" \
+              --splits "$SPLITS" \
+            || echo "WARN motive-eval failed: $in" >&2
+      ' _ {}
+
+# Plot MOTIVE sweep results in the gather_sweep_results style.
+# Walks <sweep_dir>/**/motive/metrics.json, writes summary CSV + per-k plots
+# to <output_dir> (default: aux_figures/motive/). One figure set per
+# best-selection mode (per_codec / best_avg_codec / best_any_codec /
+# zstd_reference); filename suffix matches plot_motive_cross_task.py.
+motive-plot sweep_dir output_dir="aux_figures/motive" selections="per_codec,best_avg_codec,best_any_codec,zstd_reference":
+    uv run python analysis/plot_motive_results.py \
+        --sweep-dir {{ sweep_dir }} \
+        --output-dir {{ output_dir }} \
+        --k-pcts 1,5,10 \
+        --best-selections {{ selections }}
+
+# Plot MOTIVE codec-delta from the raw/lossless baseline per family.
+# Mirrors gather_sweep_results.generate_codec_delta_from_raw_groups_plot
+# (absolute deltas only — no percentage row). Reads the summary CSV emitted
+# by motive-plot, so run motive-plot first.
+motive-plot-delta plot_dir:
+    uv run python analysis/plot_motive_codec_delta.py \
+        --summary-csv {{ plot_dir }}/motive_sweep_summary.csv \
+        --output-dir {{ plot_dir }} \
+        --k-pcts 1,5,10
+
+# LaTeX percentage-delta table for MOTIVE results, one .tex file per k%%.
+# Mirrors gather_sweep_results' codec_delta_pct_table.tex layout. Reads the
+# same summary CSV as motive-plot-delta, so run motive-plot first.
+motive-table-delta plot_dir:
+    uv run python analysis/generate_motive_delta_table.py \
+        --summary-csv {{ plot_dir }}/motive_sweep_summary.csv \
+        --output-dir {{ plot_dir }} \
+        --k-pcts 1,5,10 \
+        --force
+
+# Cross-task scatter (CC vs GG, CG-Divs vs CG-Bioact) — one figure per k%%,
+# with a `_noORF` variant alongside. Reads the same summary CSV as
+# motive-plot-delta. Pass --show-all-points to also emit a faint background
+# cloud of every config. `selection` mirrors gather_sweep_results --best-selection
+# (per_codec / best_avg_codec / best_any_codec / zstd_reference); default
+# best_avg_codec to pair with sweep_nap_pa_vs_pc_panel_a_best_avg_codec.
+motive-plot-cross plot_dir selection="best_avg_codec":
+    uv run python analysis/plot_motive_cross_task.py \
+        --summary-csv {{ plot_dir }}/motive_sweep_summary.csv \
+        --output-dir {{ plot_dir }} \
+        --k-pcts 1,5,10 \
+        --best-selection {{ selection }} \
+        --show-all-points
+
+# Run MOTIVE evaluation across every output.parquet under a sweep dir.
+# Idempotent — skips a config if its metrics.json already exists.
+#
+#   output_dir empty (default) — write next to input: <config_dir>/results/motive/
+#   output_dir set             — mirror sweep subtree under it:
+#                                   <sweep_dir>/<rel>/output.parquet
+#                                   → <output_dir>/<rel>/motive/
+#
+# Examples:
+#   just motive-eval-sweep src/norm_3/data/features/variance_first_v11_lite
+#   just motive-eval-sweep src/norm_3/data/features/variance_first_v11_lite /scratch/motive_results jobs=8
+motive-eval-sweep sweep_dir output_dir="" jobs="4" annotations="metadata/motive_annotations.parquet" splits="metadata/motive_splits.parquet":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SWEEP="{{ sweep_dir }}"
+    OUT_BASE="{{ output_dir }}"
+    ANN="{{ annotations }}"
+    SPLITS="{{ splits }}"
+    export SWEEP OUT_BASE ANN SPLITS
+    [ -f "$ANN" ]    || { echo "ERROR: annotations file not found: $ANN" >&2; exit 1; }
+    [ -f "$SPLITS" ] || { echo "ERROR: splits file not found: $SPLITS" >&2; exit 1; }
+    find "$SWEEP" -name output.parquet -print0 \
+      | xargs -0 -n1 -P{{ jobs }} -I{} bash -c '
+          in="$1"
+          in_dir="$(dirname "$in")"
+          if [ -n "$OUT_BASE" ]; then
+              rel="${in_dir#${SWEEP%/}/}"
+              out="$OUT_BASE/$rel/motive"
+          else
+              out="$in_dir/results/motive"
+          fi
+          mkdir -p "$out"
+          uv run python evaluation/evaluate_motive.py \
+              --input "$in" --output "$out" \
+              --annotations "$ANN" \
+              --splits "$SPLITS" \
+            || echo "WARN motive-eval failed: $in" >&2
+      ' _ {}
+
 # ═══════════════════════════════════════════════════════════════
 # Section 11: Auxiliary
 # ═══════════════════════════════════════════════════════════════
