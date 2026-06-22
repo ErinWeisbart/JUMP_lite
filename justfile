@@ -438,6 +438,13 @@ saturation-plot:
     cp analysis/output/saturation/saturation_PC_mean_nap.png aux_figures/
     cp analysis/output/saturation/saturation_pa_vs_pc.png aux_figures/
 
+# Saturation analysis: per-group best-config replot from existing saturation-proper outputs
+# Reads analysis/output/saturation_proper/saturation_results_<group>.csv files
+# and emits per-group curves keeping only the best config per (model, n, seed),
+# with shaded variance across seeds.
+saturation-plot-bestconfig:
+    cd src/norm_3 && pixi run python ../../analysis/plot_saturation_bestconfig.py
+
 # ═══════════════════════════════════════════════════════════════
 # Section 7: Feature Extraction
 # ═══════════════════════════════════════════════════════════════
@@ -1182,6 +1189,18 @@ motive-eval-sweep sweep_dir output_dir="" jobs="4" annotations="metadata/motive_
               --splits "$SPLITS" \
             || echo "WARN motive-eval failed: $in" >&2
       ' _ {}
+
+# End-to-end MOTIVE eval on the top-N configs of a norm_3 sweep:
+# filter top-N -> eval full ann -> eval strict ann -> plot both. Override
+# SWEEP_DIR / TOP_N / METRIC / JOBS / etc. via env vars at invocation
+# (see scripts/run_motive_top.sh for the full list).
+motive-run-top:
+    bash scripts/run_motive_top.sh
+
+# End-to-end MOTIVE eval on EVERY config under a sweep dir (fills in the
+# non-top-N remainder; idempotent against an existing motive-run-top run).
+motive-run-all:
+    bash scripts/run_motive_all.sh
 
 # ═══════════════════════════════════════════════════════════════
 # Section 11: Auxiliary
