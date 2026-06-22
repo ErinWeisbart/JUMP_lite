@@ -1231,6 +1231,7 @@ def generate_all_metrics_plot(pdf, output_dir: Path, model_colors: dict,
     with each model on the x-axis and its own color.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     n_models = len(models)
     display_names = [get_display_name(m) for m in models]
@@ -1318,6 +1319,7 @@ def generate_group_nap_plot(pdf, output_dir: Path, model_colors: dict,
     Style matches generate_all_metrics_plot.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     group_metrics = [
         ("PA CRISPR NAP", "NAP", "PA_group_crispr_mean_normalized_average_precision"),
@@ -1496,6 +1498,7 @@ def generate_group_nap_plot_compact(pdf, output_dir: Path, model_colors: dict,
     Same styling as generate_group_nap_plot.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     group_metrics = [
         ("PA - CRISPR", "NAP", "PA_group_crispr_mean_normalized_average_precision"),
@@ -1942,6 +1945,7 @@ def generate_all_metrics_violin(pdf, output_dir: Path, model_colors: dict,
     """
     import pandas as pd
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     n_models = len(models)
     display_names = [get_display_name(m) for m in models]
@@ -3753,6 +3757,7 @@ def generate_codec_delta_from_raw_plot(pdf, output_dir: Path, model_colors: dict
     """
     import pandas as pd
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     # Identify families that have a raw codec
     family_models: dict[str, list[str]] = {}
@@ -4522,6 +4527,7 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     """
     import pandas as pd
     output_dir.mkdir(parents=True, exist_ok=True)
+    np.random.seed(0)
 
     # Identify families that have a raw codec
     family_models: dict[str, list[str]] = {}
@@ -4678,95 +4684,146 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     # Font sizes (slightly smaller for 6-col layout)
     fs_title = 14
     fs_axis = 11
-    fs_tick = 9
+    fs_tick = 12
     fs_family = 10
 
-    # --- Plot: 2 rows x n_metrics cols ---
-    n_rows = 2
-    row_height = max(4, 1.0 * n_families)
-    fig, all_axes = plt.subplots(n_rows, n_metrics,
-                                 figsize=(5 * n_metrics, row_height * n_rows))
-    if n_metrics == 1:
-        all_axes = all_axes.reshape(n_rows, 1)
+    # --- Plot: render delta rows (abs / pct) x n_metrics cols ---
+    # After axis swap: codecs on x-axis, delta on y-axis.
+    cat_extent_in = max(5, 1.2 * n_families)   # inches per subplot for the codec (x) axis
+    delta_extent_in = 4                         # inches per subplot for the delta (y) axis
 
-    row_configs = [
-        (0, "delta", "\u0394 {metric} (codec \u2212 baseline)", ""),
-        (1, "delta_pct", "\u0394 {metric} % (codec \u2212 baseline)", " (%)"),
-    ]
+    _ROW_ABS = (0, "delta", "")
+    _ROW_PCT = (1, "delta_pct", " %")
+    _ALL_ROWS = [_ROW_ABS, _ROW_PCT]
 
     from matplotlib.ticker import MaxNLocator
-
-    _panel_labels = "abcdefghijklmnop"
-    panel_idx = 0
-
-    for row_idx, value_col, xlabel_tpl, title_sfx in row_configs:
-        is_pct_row = value_col == "delta_pct"
-        for col_idx, (metric_title, metric_col) in enumerate(metrics):
-            ax = all_axes[row_idx, col_idx]
-            metric_df = delta_df[delta_df["metric"] == metric_title]
-
-            for fam, cl, m, _ in codec_entries:
-                ypos = y_positions[m]
-                mdf = metric_df[metric_df["model"] == m]
-                vals = mdf[value_col].dropna().values
-                color = fam_colors.get(fam, (0.5, 0.5, 0.5))
-
-                if len(vals) > 0:
-                    y_jitter = np.random.normal(ypos, 0.12, len(vals))
-                    ax.scatter(vals, y_jitter, c=[color], s=15, alpha=0.35,
-                               edgecolors="white", linewidths=0.15, zorder=3)
-                    mean_val = np.mean(vals)
-                    ax.scatter(mean_val, ypos, c=[color], s=90, alpha=1.0,
-                               edgecolors="black", linewidths=0.6, marker="D", zorder=5)
-                    ax.plot([0, mean_val], [ypos, ypos], color=color, linewidth=1.2,
-                            alpha=0.7, zorder=2)
-                    if is_pct_row:
-                        sign = "+" if mean_val >= 0 else ""
-                        ax.text(mean_val, ypos - 0.3, f"{sign}{mean_val:.1f}%",
-                                fontsize=7, ha="center", va="top", color="black",
-                                fontweight="bold", zorder=6)
-
-            ax.axvline(0, color="black", linewidth=1.0, linestyle="-", alpha=0.6, zorder=1)
-
-            ax.set_yticks(y_ticks)
-            ax.set_yticklabels(y_tick_labels, fontsize=fs_tick)
-            ax.set_ylim(-0.5, total_height - 0.5)
-            ax.invert_yaxis()
-            ax.set_xlabel(xlabel_tpl.format(metric=metric_title), fontsize=fs_axis, fontweight="bold")
-            ax.set_title(f"{metric_title}{title_sfx}", fontsize=fs_title, fontweight="bold")
-            ax.xaxis.set_major_locator(MaxNLocator(nbins=5, symmetric=True))
-            ax.tick_params(axis="x", labelsize=fs_tick, rotation=45)
-            ax.grid(True, alpha=0.15, axis="x", linewidth=0.5)
-            ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
-
-            # Panel label
-            ax.text(-0.02, 1.05, _panel_labels[panel_idx], transform=ax.transAxes,
-                    fontsize=fs_title + 4, fontweight="bold", va="bottom", ha="right")
-            panel_idx += 1
-
-            # Family labels on right side (only on last column to avoid clutter)
-            if col_idx == n_metrics - 1:
-                trans = ax.get_yaxis_transform()
-                for fam, ystart, yend in family_spans:
-                    mid = (ystart + yend) / 2.0
-                    fam_disp = FAMILY_DISPLAY.get(fam, fam)
-                    ax.text(1.02, mid, fam_disp, transform=trans,
-                            ha="left", va="center", fontsize=fs_family, fontweight="bold",
-                            color=fam_colors.get(fam, (0.3, 0.3, 0.3)))
-                    ax.plot([1.01, 1.01], [ystart - 0.3, yend + 0.3], transform=trans,
-                            color="gray", linewidth=0.8, clip_on=False)
+    from matplotlib.lines import Line2D
+    import math
 
     _sel_suffix = {"zstd_reference": "_zstd_pinned", "best_any_codec": "_best_any_codec", "best_avg_codec": "_best_avg_codec"}.get(best_selection, "")
-    fig.suptitle(
-        "Per-Group Performance Delta from Baseline (raw/zstd)\n(\u25C6 = mean across configs, dots = individual configs)",
-        fontsize=fs_title + 2, fontweight="bold", y=1.01,
-    )
-    plt.tight_layout(rect=[0, 0, 0.94, 0.97])
-    fname = f"codec_delta_from_raw_groups{_sel_suffix}.png"
-    plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_dir / fname}")
+
+    def _split_metric_title(title):
+        """Split 'PA CRISPR' \u2192 ('PA', 'CRISPR'); 'NAP Balanced' \u2192 ('', 'NAP Balanced')."""
+        if title.startswith("PA "):
+            return "PA", title[3:]
+        if title.startswith("PC "):
+            return "PC", title[3:]
+        return "", title
+
+    def _render(rows_to_render, fname_suffix, metric_grid=None):
+        """Render the per-group delta figure.
+
+        metric_grid: optional (n_metric_rows, n_metric_cols) tuple to wrap the
+        n_metrics columns into a grid. Only valid when len(rows_to_render) == 1
+        (i.e. abs-only or pct-only variants).
+        """
+        n_rows = len(rows_to_render)
+
+        if metric_grid is not None:
+            assert n_rows == 1, "metric_grid only valid for single delta-row variants"
+            mr, mc = metric_grid
+            assert mr * mc >= n_metrics, f"metric_grid {metric_grid} too small for {n_metrics} metrics"
+            fig, all_axes = plt.subplots(mr, mc,
+                                         figsize=(cat_extent_in * mc, delta_extent_in * mr),
+                                         squeeze=False)
+            flat_axes = [all_axes[r, c] for r in range(mr) for c in range(mc)]
+        else:
+            fig, all_axes = plt.subplots(n_rows, n_metrics,
+                                         figsize=(cat_extent_in * n_metrics, delta_extent_in * n_rows),
+                                         squeeze=False)
+
+        _panel_labels = "abcdefghijklmnop"
+        panel_idx = 0
+
+        for grid_row, (_orig_row_idx, value_col, pct_sfx) in enumerate(rows_to_render):
+            is_pct_row = value_col == "delta_pct"
+            for col_idx, (metric_title, metric_col) in enumerate(metrics):
+                if metric_grid is not None:
+                    ax = flat_axes[col_idx]
+                else:
+                    ax = all_axes[grid_row, col_idx]
+                metric_df = delta_df[delta_df["metric"] == metric_title]
+                prefix, subset = _split_metric_title(metric_title)
+
+                for fam, cl, m, _ in codec_entries:
+                    xpos = y_positions[m]
+                    mdf = metric_df[metric_df["model"] == m]
+                    vals = mdf[value_col].dropna().values
+                    color = fam_colors.get(fam, (0.5, 0.5, 0.5))
+
+                    if len(vals) > 0:
+                        x_jitter = np.random.normal(xpos, 0.12, len(vals))
+                        ax.scatter(x_jitter, vals, c=[color], s=15, alpha=0.35,
+                                   edgecolors="white", linewidths=0.15, zorder=3)
+                        mean_val = np.mean(vals)
+                        ax.scatter(xpos, mean_val, c=[color], s=90, alpha=1.0,
+                                   edgecolors="black", linewidths=0.6, marker="D", zorder=5)
+                        ax.plot([xpos, xpos], [0, mean_val], color=color, linewidth=1.2,
+                                alpha=0.7, zorder=2)
+                        if is_pct_row:
+                            sign = "+" if mean_val >= 0 else ""
+                            ax.text(xpos, mean_val, f"{sign}{mean_val:.1f}%",
+                                    fontsize=7, ha="center",
+                                    va="bottom" if mean_val >= 0 else "top",
+                                    color="black", fontweight="bold", zorder=6)
+
+                ax.axhline(0, color="black", linewidth=1.0, linestyle="-", alpha=0.6, zorder=1)
+
+                ax.set_xticks(y_ticks)
+                ax.set_xticklabels(y_tick_labels, fontsize=fs_tick, rotation=45, ha="right")
+                ax.set_xlim(-0.5, total_height - 0.5)
+                # Y-label: "\u0394 PA (codec \u2212 baseline)" / "\u0394 PA % (codec \u2212 baseline)"
+                ylabel_metric = prefix if prefix else subset
+                ax.set_ylabel(f"\u0394 {ylabel_metric}{pct_sfx}",
+                              fontsize=fs_axis + 3, fontweight="bold")
+                # Subplot title: just the data subset (PA/PC moved to y-label).
+                # Break multi-word subsets onto two lines for compact panel headers.
+                subset_display = subset.replace(" ", "\n", 1) if " " in subset else subset
+                ax.set_title(subset_display, fontsize=fs_title, fontweight="bold")
+                ax.yaxis.set_major_locator(MaxNLocator(nbins=5, symmetric=True))
+                ax.tick_params(axis="y", labelsize=fs_tick + 3)
+                ax.grid(True, alpha=0.15, axis="y", linewidth=0.5)
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+
+                ax.text(-0.02, 1.05, _panel_labels[panel_idx], transform=ax.transAxes,
+                        fontsize=fs_title + 4, fontweight="bold", va="bottom", ha="right")
+                panel_idx += 1
+
+        # Hide unused subplots when metrics don't fill the grid
+        if metric_grid is not None:
+            for i in range(n_metrics, mr * mc):
+                flat_axes[i].set_visible(False)
+
+        # Family color legend (replaces the per-subplot family labels)
+        legend_handles = [
+            Line2D([0], [0], marker="o", color="w",
+                   markerfacecolor=fam_colors.get(fam, (0.5, 0.5, 0.5)),
+                   markeredgecolor="black", markeredgewidth=0.8, markersize=18,
+                   label=FAMILY_DISPLAY.get(fam, fam))
+            for fam in fam_order
+        ]
+        # Single-row horizontal legend below the figure (one column per family).
+        fig.legend(handles=legend_handles, loc="upper center",
+                   bbox_to_anchor=(0.5, 0.0), fontsize=fs_family + 6,
+                   frameon=False, ncol=max(1, len(fam_order)),
+                   title="Model family", title_fontsize=fs_family + 8,
+                   handletextpad=0.5, columnspacing=1.5)
+
+        plt.tight_layout()
+        fname = f"codec_delta_from_raw_groups{fname_suffix}{_sel_suffix}.png"
+        plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
+        plt.close()
+        print(f"Saved: {output_dir / fname}")
+
+    _render(_ALL_ROWS, "")
+    # Single-delta-row variants: arrange metrics in 2 rows
+    _two_row_grid = (2, math.ceil(n_metrics / 2))
+    _render([_ROW_ABS], "_abs_only", metric_grid=_two_row_grid)
+    _render([_ROW_PCT], "_pct_only", metric_grid=_two_row_grid)
+    # Portrait (3x2) variant of the abs-only figure -- same content, transposed grid.
+    _two_col_grid = (math.ceil(n_metrics / 2), 2)
+    _render([_ROW_ABS], "_abs_only_3x2", metric_grid=_two_col_grid)
 
     # --- LaTeX table: mean ± std of percentage delta per codec ---
     # Metric groups: PA (4 sub-groups + mean) and PC (2 sub-groups + mean)
