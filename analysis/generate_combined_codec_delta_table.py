@@ -522,19 +522,13 @@ def main() -> None:
     parser.add_argument(
         "--refchem-csv",
         type=Path,
-        default=Path(
-            "/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/"
-            "variance_first_v11_lite/sweep_results.csv"
-        ),
+        default=Path("data/intermediate/sweep_v11_lite/sweep_results.csv"),
         help="RefChem sweep_results.csv (per-config NAP metrics).",
     )
     parser.add_argument(
         "--motive-csv",
         type=Path,
-        default=Path(
-            "/work/users/jfredinh/projects/cleaning-JUMP_CORE/aux_figures/"
-            "motive_large_strict/motive_sweep_summary.csv"
-        ),
+        default=Path("data/results/figures/motive_large_strict/motive_sweep_summary.csv"),
         help="MOTIVE motive_sweep_summary.csv (per-config recall@k%%).",
     )
     parser.add_argument(
@@ -544,10 +538,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path(
-            "/work/users/jfredinh/projects/cleaning-JUMP_CORE/aux_figures/"
-            "combined_codec_delta"
-        ),
+        default=Path("data/results/tables/combined_codec_delta"),
         help="Directory to write the .tex files into.",
     )
     parser.add_argument(
