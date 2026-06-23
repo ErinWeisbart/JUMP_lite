@@ -32,13 +32,19 @@ features_target2_dl  := "data/features/jump_target2_4plate_cl_3"
 
 # jump_lite
 lite_aliby_dl        := aliby_output / "jump_lite_rerun"
-features_lite_cp     := "data/features/jump_lite"
-features_lite_dl     := "data/features/jump_lite_cl_3"
+features_lite_cp     := "data/raw/features/jump_lite"
+features_lite_dl     := "data/raw/features/jump_lite_cl_3"
 
 # ─── Normalization & sweep paths ─────────────────────────────
 norm3_dir            := "src/norm_3"
 sweep_v11_dir        := "data/features/variance_first_v11"
-sweep_v11_lite_dir   := "data/features/variance_first_v11_lite"
+sweep_v11_lite_dir   := "data/intermediate/sweep_v11_lite"
+
+# ─── Output paths (centralised under data/results) ───────────
+results_figures      := "data/results/figures"
+results_tables       := "data/results/tables"
+results_summaries    := "data/results/summaries"
+intermediate_dir     := "data/intermediate"
 
 # ─── Model & codec lists ─────────────────────────────────────
 # DL models for target2 extraction
@@ -235,17 +241,15 @@ segmentation-cell-iou mappings_dir="analysis/segmentation/output/segmentation_co
 
 # IoU ablation: show metric consistency across IoU thresholds (appendix figure)
 segmentation-iou-ablation:
-    uv run python analysis/segmentation/plot_iou_ablation.py
-    cp analysis/segmentation/output/iou_ablation_accuracy.png aux_figures/
+    uv run python analysis/segmentation/plot_iou_ablation.py \
+        --results-dir {{ intermediate_dir }}/segmentation_comparison/detailed_results \
+        --output-dir {{ results_figures }}
 
 # Rank stability: Spearman rho of model rankings across compression levels
 rank-stability:
-    uv run python analysis/rank_stability.py
-    cp analysis/output/rank_stability/rank_stability_best_config.png aux_figures/
-    cp analysis/output/rank_stability/rank_stability_mean_across_configs.png aux_figures/
-    cp analysis/output/rank_stability/rank_stability_distribution.png aux_figures/
-    cp analysis/output/rank_stability/rank_stability_correlation_scatter.png aux_figures/
-    cp analysis/output/rank_stability/rank_stability_correlation_scatter_all_configs.png aux_figures/
+    uv run python analysis/rank_stability.py \
+        --input {{ intermediate_dir }}/sweep_summaries/sweep_results_v11_lite_full.csv \
+        --output-dir {{ results_figures }}/rank_stability
 
 # Saturation analysis: PA/PC vs treatment count (requires best-config parquets)
 # Runs via pixi from norm_3 to get copairs + cupy dependencies
@@ -443,7 +447,9 @@ saturation-plot:
 # and emits per-group curves keeping only the best config per (model, n, seed),
 # with shaded variance across seeds.
 saturation-plot-bestconfig:
-    cd src/norm_3 && pixi run python ../../analysis/plot_saturation_bestconfig.py
+    cd src/norm_3 && pixi run python ../../analysis/plot_saturation_bestconfig.py \
+        --input-dir ../../{{ intermediate_dir }}/analysis/saturation_proper \
+        --output-dir ../../{{ results_figures }}/saturation_proper
 
 # ═══════════════════════════════════════════════════════════════
 # Section 7: Feature Extraction
@@ -967,6 +973,28 @@ sweep-status dataset="v11":
 # Section 10: Results Aggregation & Figures
 # ═══════════════════════════════════════════════════════════════
 
+# Reproduce all final figures + tables from intermediate checkpoints under
+# data/intermediate/. Assumes the sweep (data/intermediate/sweep_v11_lite/)
+# and the MOTIVE eval (data/intermediate/motive_eval/large_strict/) are
+# already populated — those upstream stages are NOT re-run here.
+reproduce: results-v11-lite
+    just motive-plot       data/intermediate/motive_eval/large_strict {{ results_figures }}/motive_large_strict
+    just motive-plot-delta {{ results_figures }}/motive_large_strict
+    just motive-table-delta {{ results_figures }}/motive_large_strict
+    just motive-plot-cross {{ results_figures }}/motive_large_strict
+    just model-task-rank   {{ results_figures }}/motive_large_strict
+    just combined-codec-delta-table
+    just rank-stability
+    just segmentation-iou-ablation
+    just saturation-plot-bestconfig
+    @echo
+    @echo "DONE. Final outputs under {{ results_figures }}/ and {{ results_tables }}/"
+
+# Remove everything under data/results/ so `just reproduce` regenerates cleanly.
+clean-results:
+    rm -rf {{ results_figures }} {{ results_tables }} {{ results_summaries }}
+    mkdir -p {{ results_figures }} {{ results_tables }} {{ results_summaries }}
+
 # Aggregate target2 v11 sweep results with plots
 results-v11:
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
@@ -978,10 +1006,10 @@ results-v11:
 # Aggregate jump_lite v11_lite sweep results with plots
 results-v11-lite:
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
-        --sweep-dir {{ sweep_v11_lite_dir }} \
+        --sweep-dir ../../{{ sweep_v11_lite_dir }} \
+        --plot-dir ../../{{ results_figures }}/sweep_v11_lite \
         --plot --filter-degenerate \
-        --best-metric nap_balanced \
-        --exclude-codecs mq_new d20_e2 d50
+        --best-metric nap_balanced
 
 # Generic sweep results aggregation
 results sweep_dir metric="nap_balanced":
