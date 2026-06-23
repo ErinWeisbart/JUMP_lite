@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import time
 from itertools import groupby as itertools_groupby
@@ -5093,8 +5094,14 @@ def main():
     if args.output is None:
         args.output = args.sweep_dir / "sweep_results.csv"
 
-    # Find all metrics.json files
-    json_files = list(args.sweep_dir.rglob("metrics.json"))
+    # Find all metrics.json files. Use os.walk(followlinks=True) instead of
+    # Path.rglob: the recommended data/ layout has data/intermediate/sweep_*/
+    # populated via symlinks pointing at real sweep dirs, and Path.rglob
+    # under Python <3.13 silently skips symlinked directories.
+    json_files = []
+    for root, _dirs, files in os.walk(args.sweep_dir, followlinks=True):
+        if "metrics.json" in files:
+            json_files.append(Path(root) / "metrics.json")
     print(f"Found {len(json_files)} metrics.json files")
 
     if not json_files:
