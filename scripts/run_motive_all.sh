@@ -9,9 +9,9 @@
 
 set -euo pipefail
 
-SWEEP_DIR=${SWEEP_DIR:-/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite}
-OUT_FULL=${OUT_FULL:-/work/users/jfredinh/projects/cleaning-JUMP_CORE/src/norm_3/data/features/motive_large_full}
-OUT_STRICT=${OUT_STRICT:-/work/users/jfredinh/projects/cleaning-JUMP_CORE/src/norm_3/data/features/motive_large_strict}
+SWEEP_DIR=${SWEEP_DIR:-data/intermediate/sweep_v11_lite}
+OUT_FULL=${OUT_FULL:-data/intermediate/motive_eval/large_full}
+OUT_STRICT=${OUT_STRICT:-data/intermediate/motive_eval/large_strict}
 
 JOBS=${JOBS:-32}
 
@@ -19,8 +19,8 @@ ANN_FULL=${ANN_FULL:-metadata/motive_annotations.parquet}
 ANN_STRICT=${ANN_STRICT:-metadata/motive_annotations_strict.parquet}
 SPLITS=${SPLITS:-metadata/motive_splits.parquet}
 
-PLOT_FULL=${PLOT_FULL:-aux_figures/motive_large_full}
-PLOT_STRICT=${PLOT_STRICT:-aux_figures/motive_large_strict}
+PLOT_FULL=${PLOT_FULL:-data/results/figures/motive_large_full}
+PLOT_STRICT=${PLOT_STRICT:-data/results/figures/motive_large_strict}
 
 n_total=$(find "${SWEEP_DIR}" -name output.parquet 2>/dev/null | wc -l)
 echo "[run_motive_all] sweep has ${n_total} output.parquet files"

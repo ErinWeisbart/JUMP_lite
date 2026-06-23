@@ -11,10 +11,10 @@
 
 set -euo pipefail
 
-SWEEP_DIR=${SWEEP_DIR:-/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite}
+SWEEP_DIR=${SWEEP_DIR:-data/intermediate/sweep_v11_lite}
 SWEEP_RESULTS=${SWEEP_RESULTS:-${SWEEP_DIR}/sweep_results.csv}
-OUT_FULL=${OUT_FULL:-/work/users/jfredinh/projects/cleaning-JUMP_CORE/src/norm_3/data/features/motive_large_full}
-OUT_STRICT=${OUT_STRICT:-/work/users/jfredinh/projects/cleaning-JUMP_CORE/src/norm_3/data/features/motive_large_strict}
+OUT_FULL=${OUT_FULL:-data/intermediate/motive_eval/large_full}
+OUT_STRICT=${OUT_STRICT:-data/intermediate/motive_eval/large_strict}
 
 LIST=${LIST:-metadata/motive_top_configs.txt}
 TOP_N=${TOP_N:-50}
@@ -25,8 +25,8 @@ ANN_FULL=${ANN_FULL:-metadata/motive_annotations.parquet}
 ANN_STRICT=${ANN_STRICT:-metadata/motive_annotations_strict.parquet}
 SPLITS=${SPLITS:-metadata/motive_splits.parquet}
 
-PLOT_FULL=${PLOT_FULL:-aux_figures/motive_large_full}
-PLOT_STRICT=${PLOT_STRICT:-aux_figures/motive_large_strict}
+PLOT_FULL=${PLOT_FULL:-data/results/figures/motive_large_full}
+PLOT_STRICT=${PLOT_STRICT:-data/results/figures/motive_large_strict}
 
 echo "=== 1/4: filter top-${TOP_N} per (family, codec) by ${METRIC} ==="
 nix develop . --command just motive-filter-top \
