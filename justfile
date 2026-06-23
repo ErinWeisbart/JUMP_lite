@@ -933,13 +933,42 @@ sweep-validate-slice model="morphem" codec="jpegxl_lossy_mq" epsilons="0.05,0.1,
         tvn_efaar_epsilon={{ epsilons }} \
         hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }}
 
+# Phase 3 validation slice: CellProfiler. Reuses focused_cp_v11_lite_tvn_efaar
+# (the v9_cp preset). Pinned axes match reference dirs at corr_thresh=0.95.
+sweep-validate-slice-cp epsilons="0.05,0.1,0.5" gpu="0" jobs="3":
+    cd {{ norm3_dir }} && CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+        +sweep=focused_cp_v11_lite_tvn_efaar \
+        input.path="../../{{ features_lite_cp }}/cellprofiler_raw_jump_lite_raw_features.parquet" \
+        output.path="../../{{ intermediate_dir }}/sweep_v11_lite_validate/output.parquet" \
+        norm_method=robustmad \
+        norm_fit_controls=true \
+        corr_thresh=0.95 \
+        tvn_efaar_n_components=128 \
+        tvn_efaar_epsilon={{ epsilons }} \
+        hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }}
+
+# Phase 3 validation slice: cell_count baseline. Full sweep (4 configs).
+sweep-validate-slice-cellcount gpu="0" jobs="4":
+    cd {{ norm3_dir }} && CUDA_VISIBLE_DEVICES={{ gpu }} pixi run python -m norm_3.pipeline --multirun \
+        +sweep=focused_cell_count_v11_lite \
+        input.path="../../{{ features_lite_cp }}/cell_count_jump_lite_raw_features.parquet" \
+        output.path="../../{{ intermediate_dir }}/sweep_v11_lite_validate/output.parquet" \
+        hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }}
+
 # Compare validation-slice output against JUMP_core's reference sweep.
 # Reports byte-identity and numerical diff for each config dir present in both.
 sweep-validate-diff model="morphem" codec="jpegxl_lossy_mq" ref_root="/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite":
     #!/usr/bin/env bash
     set -euo pipefail
-    slice_dir="{{ intermediate_dir }}/sweep_v11_lite_validate/{{ model }}_jump_lite_updated_{{ codec }}_raw_features"
-    ref_dir="{{ ref_root }}/{{ model }}_jump_lite_updated_{{ codec }}_raw_features"
+    just sweep-validate-diff-dir "{{ model }}_jump_lite_updated_{{ codec }}_raw_features" "{{ ref_root }}"
+
+# Lower-level diff that takes the input-basename dir directly (for CP / cell_count
+# whose dir naming doesn't follow the {model}_jump_lite_updated_{codec} pattern).
+sweep-validate-diff-dir basename ref_root="/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    slice_dir="{{ intermediate_dir }}/sweep_v11_lite_validate/{{ basename }}"
+    ref_dir="{{ ref_root }}/{{ basename }}"
     if [ ! -d "${slice_dir}" ]; then echo "no slice at ${slice_dir} — run sweep-validate-slice first"; exit 1; fi
     if [ ! -d "${ref_dir}" ];   then echo "no reference at ${ref_dir}"; exit 1; fi
     echo "=== diff: $(basename ${slice_dir}) ==="
