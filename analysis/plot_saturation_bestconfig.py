@@ -106,19 +106,24 @@ def plot_group(csv_path: Path, output_dir: Path, group: str | None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-dir", type=Path, default=DEFAULT_DIR)
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="Where to write plots (default: same as --input-dir)")
     parser.add_argument("--groups", nargs="+",
                         default=["group_low", "group_orf", "group_high", "group_crispr"])
     parser.add_argument("--include-all", action="store_true",
                         help="Also plot the no-group all-treatments file")
     args = parser.parse_args()
 
+    output_dir = args.output_dir if args.output_dir is not None else args.input_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     for group in args.groups:
         plot_group(args.input_dir / f"saturation_results_{group}.csv",
-                   args.input_dir, group)
+                   output_dir, group)
 
     if args.include_all:
         plot_group(args.input_dir / "saturation_results.csv",
-                   args.input_dir, None)
+                   output_dir, None)
 
 
 if __name__ == "__main__":
