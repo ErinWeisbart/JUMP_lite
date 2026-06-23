@@ -3080,7 +3080,8 @@ def generate_nap_pa_vs_pc_per_model(pdf, output_dir: Path, model_colors: dict,
 def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
                                     models: list, best_idx: dict, family_configs: dict | None,
                                     best_metric: str = "balanced",
-                                    best_selection: str = "per_codec"):
+                                    best_selection: str = "per_codec",
+                                    show_all_points: bool = False):
     """Combined figure: clean overview (left 50%) + 3x2 per-family grid (right 50%).
 
     Layout uses GridSpec with 3 rows x 4 cols (width_ratios 1:1:1:1).
@@ -3242,7 +3243,8 @@ def generate_nap_pa_vs_pc_combined(pdf, output_dir: Path, model_colors: dict,
         fig.add_subplot(gs[r, 2 + c]).set_visible(False)
 
     _sel_suffix = {"zstd_reference": "_zstd_pinned", "best_any_codec": "_best_any_codec", "best_avg_codec": "_best_avg_codec"}.get(best_selection, "")
-    fname = f"sweep_nap_pa_vs_pc_combined{_sel_suffix}.png"
+    _all_suffix = "_with_all_points" if show_all_points else ""
+    fname = f"sweep_nap_pa_vs_pc_combined{_sel_suffix}{_all_suffix}.png"
     plt.savefig(output_dir / fname, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Saved: {output_dir / fname}")
