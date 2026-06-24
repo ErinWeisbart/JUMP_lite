@@ -1701,6 +1701,8 @@ def main():
     parser.add_argument("--ground-truth", type=str, required=True, help="Ground truth method name (e.g., zstd.zarr)")
     parser.add_argument("--methods", nargs='+', required=True, help="List of methods to compare against ground truth")
     parser.add_argument("--output", type=str, default="segmentation_comparison", help="Output file prefix")
+    parser.add_argument("--output-dir", type=str, default=None, help="Output directory parent (default: analysis/segmentation/output/)")
+    parser.add_argument("--force-rerun", action="store_true", help="Always regenerate the detailed CSV even if it exists (non-interactive)")
     parser.add_argument("--workers", type=int, default=8, help="Number of parallel workers (default: 8)")
     parser.add_argument("--segment-step", type=str, default="segment_cell", help="Segmentation step name (e.g., segment_cell, segment_nuclei)")
     parser.add_argument("--both", action="store_true", help="Process both cell and nuclei segmentation together")
@@ -1720,9 +1722,9 @@ def main():
     if not root.exists():
         raise ValueError(f"Root directory does not exist: {root}")
 
-    # Create output directory structure: analysis/output/<output_name>/
-    script_dir = Path(__file__).parent
-    output_dir = script_dir / "output" / args.output
+    # Create output directory structure: <parent>/<output_name>/
+    parent_dir = Path(args.output_dir) if args.output_dir else Path(__file__).parent / "output"
+    output_dir = parent_dir / args.output
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output directory: {output_dir}")
 
@@ -1829,7 +1831,7 @@ def main():
     # Check if output already exists
     detailed_output = f"{args.output}_detailed.csv"
     rerun = True
-    if Path(detailed_output).exists():
+    if Path(detailed_output).exists() and not args.force_rerun:
         rerun_input = input(f"{detailed_output} exists. Rerun analysis? (y/n): ")
         if rerun_input.lower() != 'y':
             df = pd.read_csv(detailed_output)

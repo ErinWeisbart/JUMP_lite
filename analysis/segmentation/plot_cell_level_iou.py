@@ -272,6 +272,8 @@ def main():
                        help="Directory containing instance mapping parquet files")
     parser.add_argument("--output", type=str, default="segmentation_cell_level_iou",
                        help="Output file prefix")
+    parser.add_argument("--output-dir", type=str, default=None,
+                       help="Output directory (default: analysis/segmentation/output/)")
     parser.add_argument("--thresh", type=float, default=0.5,
                        help="IoU threshold to use for filtering (default: 0.5)")
 
@@ -289,7 +291,7 @@ def main():
     df_nuclei = load_instance_mappings(mappings_dir, segment_step="segment_nuclei")
 
     # Create output directory
-    output_dir = Path(__file__).parent / "output"
+    output_dir = Path(args.output_dir) if args.output_dir else Path(__file__).parent / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_prefix = str(output_dir / args.output)
 

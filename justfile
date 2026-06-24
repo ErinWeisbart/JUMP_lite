@@ -22,7 +22,7 @@ raw_images_target2   := data_root / "jump_lite/archive/jump_target2_4plate_bak" 
 compressed_target2   := data_root / "jump_target2_4plate"
 raw_images_lite      := data_root / "jump_lite" / "imgs" / "raw"
 compressed_lite      := data_root / "jump_lite" / "imgs"
-aliby_output         := data_root / "aliby_output"
+aliby_output         := env("ALIBY_OUTPUT", data_root / "jump_lite" / "aliby_output")
 
 # ─── Dataset-specific paths ──────────────────────────────────
 # target2
@@ -205,22 +205,29 @@ quality-figures:
 # ═══════════════════════════════════════════════════════════════
 
 # Compare segmentation masks across codecs — cell, nuclei, then combined plots
+# Intermediate CSVs/mappings → data/intermediate/segmentation_comparison/
+# Final PNGs copied to data/results/figures/segmentation_comparison/
 segmentation-compare methods="jpegxl_lossy_hq.zarr jpegxl_lossy_effort_3.zarr jpegxl_lossy_d2_e8.zarr jpegxl_lossy_mq.zarr jpegxl_lossy_lq.zarr jpegxl_lossy_d10.zarr":
     uv run python analysis/segmentation/compare_segmentations.py \
         --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
         --ground-truth zstd.zarr \
         --methods {{ methods }} \
-        --segment-step segment_cell --fast --save-mappings
+        --output-dir {{ intermediate_dir }} \
+        --force-rerun --segment-step segment_cell --fast --save-mappings
     uv run python analysis/segmentation/compare_segmentations.py \
         --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
         --ground-truth zstd.zarr \
         --methods {{ methods }} \
-        --segment-step segment_nuclei --fast --save-mappings
+        --output-dir {{ intermediate_dir }} \
+        --force-rerun --segment-step segment_nuclei --fast --save-mappings
     uv run python analysis/segmentation/compare_segmentations.py \
         --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
         --ground-truth zstd.zarr \
         --methods {{ methods }} \
+        --output-dir {{ intermediate_dir }} \
         --both
+    mkdir -p {{ results_figures }}/segmentation_comparison
+    cp {{ intermediate_dir }}/segmentation_comparison/*.png {{ results_figures }}/segmentation_comparison/
 
 # Quick segmentation test (50 samples, cell only)
 segmentation-quick:
@@ -228,16 +235,20 @@ segmentation-quick:
         --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
         --ground-truth zstd.zarr \
         --methods jpegxl_lossy_hq.zarr jpegxl_lossy_mq.zarr \
+        --output-dir {{ intermediate_dir }} \
         --segment-step segment_cell --fast --samples 50
+    mkdir -p {{ results_figures }}/segmentation_comparison
+    cp {{ intermediate_dir }}/segmentation_comparison/*.png {{ results_figures }}/segmentation_comparison/
 
 # Generate combined IoU vs file-size plot # TODO REMOVE THIS: this is unecessary
 segmentation-iou-plot:
     uv run python analysis/segmentation/plot_segmentation_iou.py
 
 # Generate per-cell IoU distribution plots
-segmentation-cell-iou mappings_dir="analysis/segmentation/output/segmentation_comparison/instance_mappings":
+segmentation-cell-iou mappings_dir=(intermediate_dir + "/segmentation_comparison/instance_mappings"):
     uv run python analysis/segmentation/plot_cell_level_iou.py \
-        --mappings-dir {{ mappings_dir }}
+        --mappings-dir {{ mappings_dir }} \
+        --output-dir {{ results_figures }}/segmentation_comparison
 
 # IoU ablation: show metric consistency across IoU thresholds (appendix figure)
 segmentation-iou-ablation:
