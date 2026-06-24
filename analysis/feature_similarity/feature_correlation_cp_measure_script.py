@@ -1351,6 +1351,13 @@ def main():
     parser.add_argument('--workspace-dir', type=str,
                         default='/work/datasets/aliby_output/cp_measure/jump_target2_4plate',
                         help='Path to workspace directory')
+    parser.add_argument('--output-dir', type=str, default=None,
+                        help='Output directory (default: analysis/feature_similarity/output/)')
+    parser.add_argument('--raw-features-path', type=str, default=None,
+                        help='Path to cp_measure raw features parquet for the noise/correlation plot')
+    parser.add_argument('--greenlist-dir', type=str, default=None,
+                        help='Directory containing {cell,nuclei}/greenlist_features_*.csv '
+                             '(default: analysis/feature_similarity/output/)')
     parser.add_argument('--overwrite', action='store_true',
                         help='Rerun analysis even if cached results exist')
     args = parser.parse_args()
@@ -1358,7 +1365,7 @@ def main():
     # Configuration
     workspace_dir = Path(args.workspace_dir)
     cache_dir = Path(workspace_dir) / "db_cache"
-    output_dir = SCRIPT_DIR / "output"
+    output_dir = Path(args.output_dir) if args.output_dir else SCRIPT_DIR / "output"
 
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -1411,20 +1418,23 @@ def main():
 
     # Create visualizations
     print("\nCreating visualizations...")
-    plot_correlation_violinplot(df)
-    plot_correlation_boxenplot(df)
-    plot_feature_heatmap(df)
-    plot_compression_heatmap(df)
-    plot_compartment_heatmap(df)
-    plot_feature_group_boxplot(df)
-    plot_feature_group_violinplot(df)
-    plot_feature_group_by_compartment(df)
-    plot_feature_subgroups_by_compartment(df)
-    plot_feature_similarity_vs_correlation(df)
+    plot_correlation_violinplot(df, output_path=output_dir / "correlation_violinplot.png")
+    plot_correlation_boxenplot(df, output_path=output_dir / "correlation_boxenplot.png")
+    plot_feature_heatmap(df, output_path=output_dir / "feature_heatmap.png")
+    plot_compression_heatmap(df, output_path=output_dir / "compression_heatmap.png")
+    plot_compartment_heatmap(df, output_path=output_dir / "compartment_heatmap.png")
+    plot_feature_group_boxplot(df, output_path=output_dir / "feature_group_boxplot.png")
+    plot_feature_group_violinplot(df, output_path=output_dir / "feature_group_violinplot.png")
+    plot_feature_group_by_compartment(df, output_path=output_dir / "feature_group_by_compartment.png")
+    plot_feature_subgroups_by_compartment(df, output_path=output_dir / "feature_subgroups_by_compartment.png")
+    _sim_kwargs = {"output_path": output_dir / "feature_similarity_vs_correlation.png"}
+    if args.raw_features_path:
+        _sim_kwargs["raw_features_path"] = args.raw_features_path
+    plot_feature_similarity_vs_correlation(df, **_sim_kwargs)
 
     # Greenlist-filtered violin plot
     print("\nFiltering to greenlist features...")
-    df_green = filter_by_greenlist(df)
+    df_green = filter_by_greenlist(df, greenlist_dir=args.greenlist_dir)
     if len(df_green) > 0:
         plot_correlation_violinplot(
             df_green,

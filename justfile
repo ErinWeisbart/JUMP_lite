@@ -537,8 +537,18 @@ extract model dataset="jump_target2_4plate" codec="" output="data/features/" job
 # ═══════════════════════════════════════════════════════════════
 
 # CellProfiler correlation heatmaps
+# Intermediate parquets → data/intermediate/feature_correlation/
+# Final PNGs copied to data/results/figures/feature_correlation/
+# Greenlist variant requires `just feature-cross-well` to have run first
+# (it produces greenlist_features_{cell,nuclei}.csv that this script consumes).
 feature-correlation-cp:
-    uv run python analysis/feature_similarity/feature_correlation_cp_measure_script.py
+    uv run python analysis/feature_similarity/feature_correlation_cp_measure_script.py \
+        --workspace-dir {{ aliby_output }}/cp_measure/jump_target2_4plate \
+        --output-dir {{ intermediate_dir }}/feature_correlation \
+        --raw-features-path {{ features_target2_cp }}/cp_measure_jump_target2_4plate_zstd_raw_features.parquet \
+        --greenlist-dir {{ intermediate_dir }}/feature_correlation
+    mkdir -p {{ results_figures }}/feature_correlation
+    cp {{ intermediate_dir }}/feature_correlation/*.png {{ results_figures }}/feature_correlation/
 
 # Correlation vs raw CellProfiler
 # feature-correlation-raw:
@@ -550,10 +560,19 @@ feature-codec-compare mappings_dir="analysis/segmentation/output/segmentation_co
         --mappings-dir {{ mappings_dir }} --site-level --n-samples {{ n_samples }}
 
 # Cross-well feature consistency for same-treatment replicates
-feature-cross-well metadata="metadata/metadata.parquet":
+# Intermediate CSVs → data/intermediate/feature_correlation/
+# Final PNGs (incl. supplementary replicate_vs_codec_correlation.png) copied to
+# data/results/figures/feature_correlation/.
+feature-cross-well metadata="metadata/metadata.parquet" codec_corr_csv="analysis/output/codec_feature_correlation.csv":
     uv run python analysis/feature_similarity/compare_cross_well_features.py \
         --features-base {{ aliby_output }}/cp_measure/jump_target2_4plate \
-        --metadata {{ metadata }}
+        --metadata {{ metadata }} \
+        --output-dir {{ intermediate_dir }}/feature_correlation \
+        --codec-correlation-csv {{ codec_corr_csv }}
+    mkdir -p {{ results_figures }}/feature_correlation/cell {{ results_figures }}/feature_correlation/nuclei
+    cp {{ intermediate_dir }}/feature_correlation/*.png       {{ results_figures }}/feature_correlation/        2>/dev/null || true
+    cp {{ intermediate_dir }}/feature_correlation/cell/*.png  {{ results_figures }}/feature_correlation/cell/   2>/dev/null || true
+    cp {{ intermediate_dir }}/feature_correlation/nuclei/*.png {{ results_figures }}/feature_correlation/nuclei/ 2>/dev/null || true
 
 # ═══════════════════════════════════════════════════════════════
 # Section 9: Normalization Sweeps
@@ -1083,6 +1102,8 @@ reproduce: results-v11-lite results-v11 results-v11-lite-best-avg results-v11-be
     just rank-stability
     just segmentation-cell-iou
     just segmentation-iou-ablation
+    just feature-cross-well
+    just feature-correlation-cp
     just saturation-plot-bestconfig
     @echo
     @echo "DONE. Final outputs under {{ results_figures }}/ and {{ results_tables }}/"
