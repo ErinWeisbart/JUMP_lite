@@ -1069,10 +1069,11 @@ sweep-status dataset="v11":
 # ═══════════════════════════════════════════════════════════════
 
 # Reproduce all final figures + tables from intermediate checkpoints under
-# data/intermediate/. Assumes the sweep (data/intermediate/sweep_v11_lite/)
-# and the MOTIVE eval (data/intermediate/motive_eval/large_strict/) are
-# already populated — those upstream stages are NOT re-run here.
-reproduce: results-v11-lite
+# data/intermediate/. Assumes the sweeps (data/intermediate/sweep_v11_lite/,
+# data/features/variance_first_v11/) and the MOTIVE eval
+# (data/intermediate/motive_eval/large_strict/) are already populated —
+# those upstream stages are NOT re-run here.
+reproduce: results-v11-lite results-v11 results-v11-lite-best-avg results-v11-best-avg
     just motive-plot       data/intermediate/motive_eval/large_strict {{ results_figures }}/motive_large_strict
     just motive-plot-delta {{ results_figures }}/motive_large_strict
     just motive-table-delta {{ results_figures }}/motive_large_strict
@@ -1080,10 +1081,37 @@ reproduce: results-v11-lite
     just model-task-rank   {{ results_figures }}/motive_large_strict
     just combined-codec-delta-table
     just rank-stability
+    just segmentation-cell-iou
     just segmentation-iou-ablation
     just saturation-plot-bestconfig
     @echo
     @echo "DONE. Final outputs under {{ results_figures }}/ and {{ results_tables }}/"
+
+# End-to-end from compressed images → final paper figures.
+# PREREQUISITES NOT YET WRAPPED IN JUST:
+#   1. Raw JUMP images at {{ raw_images_lite }} and {{ raw_images_target2 }}
+#      Use `python src/download_images.py` (no recipe yet).
+#   2. Aliby segmentation/cp_measure output under {{ aliby_output }}
+#      That's a separate pipeline run outside this repo.
+# Expect MANY hours of wall time and hundreds of GB of disk for the heavy steps.
+produce-paper:
+    # Stage 1: Compression
+    just compress-lite-all
+    just compress-target2-all
+    # Stage 2: Feature extraction (requires aliby_output for CP)
+    just extract-cell-count
+    just extract-cp-lite
+    just extract-cp-target2
+    just extract-dl-lite
+    just extract-dl-target2
+    # Stage 3: Normalization sweep (multi-GPU, long-running)
+    just sweep-v11-lite
+    just sweep-v11
+    # Stage 4: Motive curate + eval
+    just motive-curate-strict
+    just motive-run-top
+    # Stage 5: Aggregate, plot, and produce all paper figures
+    just reproduce
 
 # Remove everything under data/results/ so `just reproduce` regenerates cleanly.
 clean-results:
@@ -1093,7 +1121,8 @@ clean-results:
 # Aggregate target2 v11 sweep results with plots
 results-v11:
     cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
-        --sweep-dir {{ sweep_v11_dir }} \
+        --sweep-dir ../../{{ sweep_v11_dir }} \
+        --plot-dir ../../{{ results_figures }}/sweep_v11 \
         --plot --filter-degenerate \
         --best-metric nap_balanced \
         --exclude-codecs mq_new d20_e2 d50
@@ -1105,6 +1134,26 @@ results-v11-lite:
         --plot-dir ../../{{ results_figures }}/sweep_v11_lite \
         --plot --filter-degenerate \
         --best-metric nap_balanced
+
+# Same as results-v11 but with --best-selection best_avg_codec
+# (produces the `*_best_avg_codec_*` suffix variants used in fig5/6/supplementary).
+results-v11-best-avg:
+    cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
+        --sweep-dir ../../{{ sweep_v11_dir }} \
+        --plot-dir ../../{{ results_figures }}/sweep_v11 \
+        --plot --filter-degenerate \
+        --best-metric nap_balanced \
+        --exclude-codecs mq_new d20_e2 d50 \
+        --best-selection best_avg_codec
+
+# Same as results-v11-lite but with --best-selection best_avg_codec.
+results-v11-lite-best-avg:
+    cd {{ norm3_dir }} && pixi run python gather_sweep_results.py \
+        --sweep-dir ../../{{ sweep_v11_lite_dir }} \
+        --plot-dir ../../{{ results_figures }}/sweep_v11_lite \
+        --plot --filter-degenerate \
+        --best-metric nap_balanced \
+        --best-selection best_avg_codec
 
 # Generic sweep results aggregation
 results sweep_dir metric="nap_balanced":
