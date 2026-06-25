@@ -894,8 +894,9 @@ sweep-v11-lite-smoke gpu="0" jobs="4":
     DL_FEATURE_DIR="../../{{ features_lite_dl }}"
     CP_FEATURE_DIR="../../{{ features_lite_cp }}"
 
-    DL_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.use_prune_correlated=true,false hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
-    CP_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.corr_thresh=0.9,0.95 hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
+    DL_OVERRIDES="norm_method=robustmad norm_fit_controls=true,false use_prune_correlated=true,false tvn_efaar_epsilon=0.5 tvn_efaar_n_components=128"
+    CP_OVERRIDES="norm_method=robustmad norm_fit_controls=true,false corr_thresh=0.9,0.95 tvn_efaar_epsilon=0.5 tvn_efaar_n_components=128"
+    CC_OVERRIDES="norm_method=robustmad,standardize norm_fit_controls=true,false"
 
     echo "==================================================="
     echo "Smoke Sweep v11 lite — 4 configs per (model, codec)"
@@ -926,6 +927,7 @@ sweep-v11-lite-smoke gpu="0" jobs="4":
             +sweep=focused_cell_count_v11_lite \
             input.path="${feature_file}" \
             output.path="${SMOKE_OUT}" \
+            ${CC_OVERRIDES} \
             hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: cell_count errors"
     else
         echo "  SKIPPING cell_count: ${feature_file} not found"
@@ -988,8 +990,9 @@ sweep-v11-smoke gpu="0" jobs="4":
     DL_FEATURE_DIR="../../{{ features_target2_dl }}"
     CP_FEATURE_DIR="../../{{ features_target2_cp }}"
 
-    DL_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.use_prune_correlated=true,false hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
-    CP_OVERRIDES="hydra.sweeper.params.norm_method=robustmad hydra.sweeper.params.norm_fit_controls=true,false hydra.sweeper.params.corr_thresh=0.9,0.95 hydra.sweeper.params.tvn_efaar_epsilon=0.5 hydra.sweeper.params.tvn_efaar_n_components=128"
+    DL_OVERRIDES="norm_method=robustmad norm_fit_controls=true,false use_prune_correlated=true,false tvn_efaar_epsilon=0.5 tvn_efaar_n_components=128"
+    CP_OVERRIDES="norm_method=robustmad norm_fit_controls=true,false corr_thresh=0.9,0.95 tvn_efaar_epsilon=0.5 tvn_efaar_n_components=128"
+    CC_OVERRIDES="norm_method=robustmad,standardize norm_fit_controls=true,false"
 
     echo "==================================================="
     echo "Smoke Sweep v11 target2 — 4 configs per (model, codec)"
@@ -1022,6 +1025,7 @@ sweep-v11-smoke gpu="0" jobs="4":
             +sweep=focused_cell_count_v11 \
             input.path="${feature_file}" \
             output.path="${SMOKE_OUT}" \
+            ${CC_OVERRIDES} \
             hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }} || echo "  Warning: cell_count errors"
     else
         echo "  SKIPPING cell_count: ${feature_file} not found"
