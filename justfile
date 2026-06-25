@@ -269,196 +269,18 @@ rank-stability:
         --input {{ intermediate_dir }}/sweep_summaries/sweep_results_v11_lite_full.csv \
         --output-dir {{ results_figures }}/rank_stability
 
-# Saturation analysis: PA/PC vs treatment count (requires best-config parquets)
-# Runs via pixi from norm_3 to get copairs + cupy dependencies
-saturation-analysis:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation
-    cp analysis/output/saturation/saturation_PA_mean_nap.png aux_figures/
-    cp analysis/output/saturation/saturation_PC_mean_nap.png aux_figures/
-    cp analysis/output/saturation/saturation_pa_vs_pc.png aux_figures/
-
-# Saturation analysis: CRISPR PA only (faster, ~50 min for all models)
-saturation-crispr-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_crispr_pa \
-        --groups group_crispr --pa-only
-    cp analysis/output/saturation_crispr_pa/saturation_PA_mean_nap.png aux_figures/saturation_crispr_pa.png
-
-# Saturation analysis: compound high PA only
-saturation-compound-high-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_compound_high_pa \
-        --groups group_high --pa-only
-    cp analysis/output/saturation_compound_high_pa/saturation_PA_mean_nap.png aux_figures/saturation_compound_high_pa.png
-
-# Saturation analysis: compound low PA only
-saturation-compound-low-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_compound_low_pa \
-        --groups group_low --pa-only
-    cp analysis/output/saturation_compound_low_pa/saturation_PA_mean_nap.png aux_figures/saturation_compound_low_pa.png
-
-# Saturation analysis: ORF PA only
-saturation-orf-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_orf_pa \
-        --groups group_orf --pa-only
-    cp analysis/output/saturation_orf_pa/saturation_PA_mean_nap.png aux_figures/saturation_orf_pa.png
-
-# Saturation analysis: all groups PA (no group filtering, full dataset)
-saturation-all-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_all_pa \
-        --pa-only
-    cp analysis/output/saturation_all_pa/saturation_PA_mean_nap.png aux_figures/saturation_all_pa.png
-
-# Saturation analysis: compound high PC only
-saturation-compound-high-pc:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_compound_high_pc \
-        --groups group_high --pc-only
-    cp analysis/output/saturation_compound_high_pc/saturation_PC_mean_nap.png aux_figures/saturation_compound_high_pc.png
-
-# Saturation analysis: compound low PC only
-saturation-compound-low-pc:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation_compound_low_pc \
-        --groups group_low --pc-only
-    cp analysis/output/saturation_compound_low_pc/saturation_PC_mean_nap.png aux_figures/saturation_compound_low_pc.png
-
-# Saturation analysis: pseudo-random configs (5 diverse normalization strategies), CRISPR PA
-saturation-pseudo-random-crispr-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_crispr_pa \
-        --groups group_crispr --pa-only \
-        --sizes 10 50 100 250 500 1000 2000 3000 5000 7500 10000 15000 20000
-    cp analysis/output/saturation_pseudo_random_crispr_pa/saturation_PA_mean_nap.png aux_figures/saturation_pseudo_random_crispr_pa.png
-
-# Saturation analysis: fully random configs (5 random normalization strategies), CRISPR PA
-saturation-fully-random-crispr-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_crispr_pa \
-        --groups group_crispr --pa-only \
-        --sizes 10 50 100 250 500 1000 2000 3000 5000 7500 10000 15000 20000
-    cp analysis/output/saturation_fully_random_crispr_pa/saturation_PA_mean_nap.png aux_figures/saturation_fully_random_crispr_pa.png
-
-# --- Pseudo-random saturation runs (5 diverse norm strategies) ---
-saturation-pseudo-random-compound-high-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_compound_high_pa \
-        --groups group_high --pa-only
-    cp analysis/output/saturation_pseudo_random_compound_high_pa/saturation_PA_mean_nap.png aux_figures/saturation_pseudo_random_compound_high_pa.png
-
-saturation-pseudo-random-compound-low-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_compound_low_pa \
-        --groups group_low --pa-only
-    cp analysis/output/saturation_pseudo_random_compound_low_pa/saturation_PA_mean_nap.png aux_figures/saturation_pseudo_random_compound_low_pa.png
-
-saturation-pseudo-random-orf-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_orf_pa \
-        --groups group_orf --pa-only
-    cp analysis/output/saturation_pseudo_random_orf_pa/saturation_PA_mean_nap.png aux_figures/saturation_pseudo_random_orf_pa.png
-
-saturation-pseudo-random-all-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_all_pa \
-        --pa-only
-    cp analysis/output/saturation_pseudo_random_all_pa/saturation_PA_mean_nap.png aux_figures/saturation_pseudo_random_all_pa.png
-
-saturation-pseudo-random-compound-high-pc:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_compound_high_pc \
-        --groups group_high --pc-only
-    cp analysis/output/saturation_pseudo_random_compound_high_pc/saturation_PC_mean_nap.png aux_figures/saturation_pseudo_random_compound_high_pc.png
-
-saturation-pseudo-random-compound-low-pc:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_pseudo_random \
-        --output-dir ../../analysis/output/saturation_pseudo_random_compound_low_pc \
-        --groups group_low --pc-only
-    cp analysis/output/saturation_pseudo_random_compound_low_pc/saturation_PC_mean_nap.png aux_figures/saturation_pseudo_random_compound_low_pc.png
-
-# --- Fully random saturation runs (5 random norm strategies) ---
-saturation-fully-random-compound-high-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_compound_high_pa \
-        --groups group_high --pa-only
-    cp analysis/output/saturation_fully_random_compound_high_pa/saturation_PA_mean_nap.png aux_figures/saturation_fully_random_compound_high_pa.png
-
-saturation-fully-random-compound-low-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_compound_low_pa \
-        --groups group_low --pa-only
-    cp analysis/output/saturation_fully_random_compound_low_pa/saturation_PA_mean_nap.png aux_figures/saturation_fully_random_compound_low_pa.png
-
-saturation-fully-random-orf-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_orf_pa \
-        --groups group_orf --pa-only
-    cp analysis/output/saturation_fully_random_orf_pa/saturation_PA_mean_nap.png aux_figures/saturation_fully_random_orf_pa.png
-
-saturation-fully-random-all-pa:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_all_pa \
-        --pa-only
-    cp analysis/output/saturation_fully_random_all_pa/saturation_PA_mean_nap.png aux_figures/saturation_fully_random_all_pa.png
-
-saturation-fully-random-compound-high-pc:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_compound_high_pc \
-        --groups group_high --pc-only
-    cp analysis/output/saturation_fully_random_compound_high_pc/saturation_PC_mean_nap.png aux_figures/saturation_fully_random_compound_high_pc.png
-
-saturation-fully-random-compound-low-pc:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/saturation_fully_random \
-        --output-dir ../../analysis/output/saturation_fully_random_compound_low_pc \
-        --groups group_low --pc-only
-    cp analysis/output/saturation_fully_random_compound_low_pc/saturation_PC_mean_nap.png aux_figures/saturation_fully_random_compound_low_pc.png
-
 # Saturation analysis: proper (normalize after subsampling, zero leakage)
 saturation-proper:
     cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py
-    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png aux_figures/
+    mkdir -p {{ results_figures }}/saturation_proper
+    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png {{ results_figures }}/saturation_proper/
 
 # Saturation analysis: proper - pilot (2 models, 3 configs, 3 seeds)
 saturation-proper-pilot:
     cd src/norm_3 && pixi run python ../../analysis/saturation_analysis_proper.py \
         --models morphem cellprofiler --n-configs 3 --n-seeds 3
-    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png aux_figures/saturation_proper_pilot.png
-
-# Saturation analysis: replot from existing results CSV
-saturation-plot:
-    cd src/norm_3 && pixi run python ../../analysis/saturation_analysis.py \
-        --input-dir ../../src/norm_3/data/features/best_configs_lite \
-        --output-dir ../../analysis/output/saturation \
-        --plot-only
-    cp analysis/output/saturation/saturation_PA_mean_nap.png aux_figures/
-    cp analysis/output/saturation/saturation_PC_mean_nap.png aux_figures/
-    cp analysis/output/saturation/saturation_pa_vs_pc.png aux_figures/
+    mkdir -p {{ results_figures }}/saturation_proper
+    cp analysis/output/saturation_proper/saturation_proper_PA_mean_nap.png {{ results_figures }}/saturation_proper/saturation_proper_pilot.png
 
 # Saturation analysis: per-group best-config replot from existing saturation-proper outputs
 # Reads analysis/output/saturation_proper/saturation_results_<group>.csv files
@@ -1215,7 +1037,7 @@ motive-curate motive_splits_path:
 
 # Run MOTIVE evaluation on a single output.parquet (mirrors the PA invocation)
 motive-eval input output:
-    uv run python evaluation/evaluate_motive.py \
+    uv run python src/motive/evaluate_motive.py \
         --input {{ input }} \
         --output {{ output }} \
         --annotations metadata/motive_annotations.parquet \
@@ -1280,7 +1102,7 @@ motive-eval-list sweep_dir output_dir list_file jobs="4" annotations="metadata/m
           rel="${in_dir#${SWEEP%/}/}"
           out="$OUT_BASE/$rel/motive"
           mkdir -p "$out"
-          uv run python evaluation/evaluate_motive.py \
+          uv run python src/motive/evaluate_motive.py \
               --input "$in" --output "$out" \
               --annotations "$ANN" \
               --splits "$SPLITS" \
@@ -1289,10 +1111,10 @@ motive-eval-list sweep_dir output_dir list_file jobs="4" annotations="metadata/m
 
 # Plot MOTIVE sweep results in the gather_sweep_results style.
 # Walks <sweep_dir>/**/motive/metrics.json, writes summary CSV + per-k plots
-# to <output_dir> (default: aux_figures/motive/). One figure set per
+# to <output_dir> (default: data/results/figures/motive/). One figure set per
 # best-selection mode (per_codec / best_avg_codec / best_any_codec /
 # zstd_reference); filename suffix matches plot_motive_cross_task.py.
-motive-plot sweep_dir output_dir="aux_figures/motive" selections="per_codec,best_avg_codec,best_any_codec,zstd_reference":
+motive-plot sweep_dir output_dir="data/results/figures/motive" selections="per_codec,best_avg_codec,best_any_codec,zstd_reference":
     uv run python analysis/plot_motive_results.py \
         --sweep-dir {{ sweep_dir }} \
         --output-dir {{ output_dir }} \
@@ -1384,7 +1206,7 @@ motive-eval-sweep sweep_dir output_dir="" jobs="4" annotations="metadata/motive_
               out="$in_dir/results/motive"
           fi
           mkdir -p "$out"
-          uv run python evaluation/evaluate_motive.py \
+          uv run python src/motive/evaluate_motive.py \
               --input "$in" --output "$out" \
               --annotations "$ANN" \
               --splits "$SPLITS" \
@@ -1411,16 +1233,8 @@ motive-run-all:
 compression-explore:
     uv run python analysis/compression_exploration/explore.py
 
-# Interactive sphering demo (Marimo)
-sphering-demo:
-    uv run marimo run scripts/sphering_demo.py
-
-# Gather key figures into main_figures/
-gather-figures:
-    bash scripts/gather_figures.sh
-
 # Render N random wells as RGB PNGs (optionally high-PA "good" wells)
-visualize-well output="aux_figures/random_well.png" rank_by="" top_pct="10" n="1" group="":
+visualize-well output="data/results/figures/random_well.png" rank_by="" top_pct="10" n="1" group="":
     uv run python scripts/visualize_well.py {{ output }} --n {{ n }} \
         {{ if rank_by != "" { "--rank-by " + rank_by + " --top-pct " + top_pct } else { "" } }} \
         {{ if group != "" { "--group " + group } else { "" } }}
