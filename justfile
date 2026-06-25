@@ -9,7 +9,7 @@
 # ─── Data root ────────────────────────────────────────────────
 # All external data lives under DATA_ROOT. Override per-machine:
 #   export DATA_ROOT=/my/other/path && just metadata
-data_root            := env("DATA_ROOT", "/work/datasets")
+data_root            := env("DATA_ROOT", "./data")
 
 # ─── External data paths ─────────────────────────────────────
 annotations_dir      := data_root / "jump_lite/archive/jump_core" / "annotations"
@@ -762,14 +762,11 @@ sweep-single input sweep="focused_dl_v11_tvn_efaar" gpu="0" jobs="4":
         input.path={{ input }} \
         hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }}
 
-# Phase 3 validation slice: run a tiny subset of v11_lite (1 model+codec × 3
-# epsilon values) and write outputs to data/intermediate/sweep_v11_lite_validate/.
-# Used to confirm the sweep machinery in this repo reproduces JUMP_core's
-# v11_lite output before committing to a full rerun.
+# Validation slice: run a tiny subset of v11_lite (1 model+codec × 3 epsilon
+# values) and write outputs to data/intermediate/sweep_v11_lite_validate/.
+# Useful for confirming the sweep machinery before committing to a full rerun.
 #
-# Defaults: morphem + jpegxl_lossy_mq, epsilons {0.05,0.1,0.5}. All other
-# axes pinned to the values used by JUMP_core's existing sweep so we can diff
-# against /work/users/jfredinh/projects/JUMP_core/.../variance_first_v11_lite/.
+# Defaults: morphem + jpegxl_lossy_mq, epsilons {0.05,0.1,0.5}.
 sweep-validate-slice model="morphem" codec="jpegxl_lossy_mq" epsilons="0.05,0.1,0.5" gpu="0" jobs="3":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -813,38 +810,6 @@ sweep-validate-slice-cellcount gpu="0" jobs="4":
         input.path="../../{{ features_lite_cp }}/cell_count_jump_lite_raw_features.parquet" \
         output.path="../../{{ intermediate_dir }}/sweep_v11_lite_validate/output.parquet" \
         hydra/launcher=joblib hydra.launcher.n_jobs={{ jobs }}
-
-# Compare validation-slice output against JUMP_core's reference sweep.
-# Reports byte-identity and numerical diff for each config dir present in both.
-sweep-validate-diff model="morphem" codec="jpegxl_lossy_mq" ref_root="/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just sweep-validate-diff-dir "{{ model }}_jump_lite_updated_{{ codec }}_raw_features" "{{ ref_root }}"
-
-# Lower-level diff that takes the input-basename dir directly (for CP / cell_count
-# whose dir naming doesn't follow the {model}_jump_lite_updated_{codec} pattern).
-sweep-validate-diff-dir basename ref_root="/work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    slice_dir="{{ intermediate_dir }}/sweep_v11_lite_validate/{{ basename }}"
-    ref_dir="{{ ref_root }}/{{ basename }}"
-    if [ ! -d "${slice_dir}" ]; then echo "no slice at ${slice_dir} — run sweep-validate-slice first"; exit 1; fi
-    if [ ! -d "${ref_dir}" ];   then echo "no reference at ${ref_dir}"; exit 1; fi
-    echo "=== diff: $(basename ${slice_dir}) ==="
-    for d in "${slice_dir}"/*/; do
-        cfg=$(basename "${d}")
-        slice_out="${d}output.parquet"
-        ref_out="${ref_dir}/${cfg}/output.parquet"
-        if [ ! -f "${ref_out}" ]; then echo "  ${cfg}: NO REFERENCE"; continue; fi
-        if cmp -s "${slice_out}" "${ref_out}"; then
-            echo "  ${cfg}: byte-identical"
-        else
-            slice_md5=$(md5sum "${slice_out}" | cut -d' ' -f1)
-            ref_md5=$(md5sum "${ref_out}"     | cut -d' ' -f1)
-            echo "  ${cfg}: differs (slice=${slice_md5} ref=${ref_md5}) — see numerical diff below"
-            uv run python analysis/compare_sweep_outputs.py "${slice_out}" "${ref_out}" || true
-        fi
-    done
 
 # Run all codecs for one DL model on one GPU (target2)
 sweep-model model gpu="0" dataset="target2":

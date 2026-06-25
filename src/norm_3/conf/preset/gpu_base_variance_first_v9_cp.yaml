@@ -52,7 +52,7 @@ steps:
   - name: merge_metadata
     enabled: true
     params:
-      metadata_path: /work/users/jfredinh/projects/cleaning-JUMP_CORE/metadata/metadata_dataset_filtered_4reps.parquet
+      metadata_path: ${hydra:runtime.cwd}/../../metadata/metadata_dataset_filtered_4reps.parquet
       skip_merge: false
 
   # Step 3: Normalization (RobustMAD, Standardize, or None)

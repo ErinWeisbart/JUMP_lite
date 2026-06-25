@@ -21,7 +21,7 @@ import tifffile
 #   {source}__{batch}__{plate}__{well}__{channel}__{site}__Orig.tif
 # Within a well/site, channels sort alphabetically: AGP, DNA, ER, Mito, RNA
 # (this is the same order that the MQ zarr was built with — see compress_tif.py:206).
-RAW_DIR = "/work/datasets/jump_lite/jump_core_annotated/raw"
+RAW_DIR = os.environ.get("RAW_DIR", "data/jump_lite/jump_core_annotated/raw")
 
 
 def load_well_image(source: str, batch: str, plate: str, well: str, site: str) -> np.ndarray:

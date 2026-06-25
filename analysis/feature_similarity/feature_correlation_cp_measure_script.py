@@ -914,7 +914,7 @@ def plot_feature_subgroups_by_compartment(df, output_path=SCRIPT_DIR / "output" 
     plt.close(fig)
 
 
-def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby_output/archived_runs/tables/noisy_features.parquet",
+def plot_features_ordered_by_noise(df, noisy_features_path="data/aliby_output/archived_runs/tables/noisy_features.parquet",
                                     output_path=SCRIPT_DIR / "output" / "features_ordered_by_noise.png"):
     """
     Create 3 subplots showing correlation values with features ordered by noise metrics.
@@ -1022,7 +1022,7 @@ def plot_features_ordered_by_noise(df, noisy_features_path="/work/datasets/aliby
 
 
 def plot_feature_similarity_vs_correlation(df,
-                                            raw_features_path="/home/jfredinh/projects/JUMP_core/output/cp_measure_jump_target2_4plate_zstd_raw_features.parquet",
+                                            raw_features_path="data/features/cp_measure_jump_target2_4plate_zstd_raw_features.parquet",
                                             output_path=SCRIPT_DIR / "output" / "feature_similarity_vs_correlation.png"):
     """
     Create scatter plots of feature cosine similarity stats vs correlation.
@@ -1147,7 +1147,7 @@ def plot_feature_similarity_vs_correlation(df,
     plt.close(fig)
 
 
-def plot_noise_ratio_vs_correlation(df, noisy_features_path="/work/datasets/aliby_output/tables/noisy_features.parquet",
+def plot_noise_ratio_vs_correlation(df, noisy_features_path="data/aliby_output/tables/noisy_features.parquet",
                                      output_path=SCRIPT_DIR / "output" / "noise_ratio_vs_correlation.png",
                                      abs_ratio_threshold=1000):
     """
@@ -1349,7 +1349,7 @@ def main():
     """Main pipeline for feature correlation analysis."""
     parser = argparse.ArgumentParser(description="Feature Correlation Analysis for CellProfiler Measures")
     parser.add_argument('--workspace-dir', type=str,
-                        default='/work/datasets/aliby_output/cp_measure/jump_target2_4plate',
+                        default='data/aliby_output/cp_measure/jump_target2_4plate',
                         help='Path to workspace directory')
     parser.add_argument('--output-dir', type=str, default=None,
                         help='Output directory (default: analysis/feature_similarity/output/)')

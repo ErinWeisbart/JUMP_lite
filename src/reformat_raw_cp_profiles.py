@@ -12,9 +12,9 @@ Output format:
 
 Usage:
     python src/reformat_raw_cp_profiles.py \
-        --source /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet \
-        --metadata /home/jfredinh/projects/JUMP_core/metadata/metadata_dataset_filtered_4reps.parquet \
-        --output /home/jfredinh/projects/JUMP_core/output/cellprofiler_raw_jump_core_raw_features.parquet
+        --source data/raw/raw_jump_CP_profiles/profiles.parquet \
+        --metadata metadata/metadata_dataset_filtered_4reps.parquet \
+        --output data/features/cellprofiler_raw_jump_core_raw_features.parquet
 """
 
 import argparse

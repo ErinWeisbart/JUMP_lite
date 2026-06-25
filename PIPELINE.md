@@ -20,7 +20,7 @@
   - `--overwrite` Overwrite existing zarr files
   - `--n-jobs <N>` Parallel workers (default: 16)
   - `--no-skip-existing` Recompress everything
-- **Run:** `nix develop . uv run python src/compress_tif_single.py --input /work/datasets/raw --output /work/datasets/compressed --codec jpegxl_lossy_hq`
+- **Run:** `nix develop . uv run python src/compress_tif_single.py --input data/raw --output data/compressed --codec jpegxl_lossy_hq`
 
 ## Step 1c: Feature Extraction
 - **Script:** `src/extract_features.py`
@@ -35,7 +35,7 @@
   - `--dataset <name>` Dataset name filter
   - `--cache-dir <path>` DuckDB cache directory
   - `--filter-border-cells` Exclude cells touching image borders
-- **Run:** `nix develop . uv run python src/extract_features.py --input /work/datasets/aliby_output --output output/ --model cp_measure --compression zstd.zarr`
+- **Run:** `nix develop . uv run python src/extract_features.py --input data/aliby_output --output output/ --model cp_measure --compression zstd.zarr`
 
 - **Script:** `src/extract_features_with_size_filter.py`
 - **Purpose:** Same as extract_features.py but with additional cell size filtering
@@ -43,7 +43,7 @@
   - `--filter-size` Enable size-based filtering
   - `--min-nuclei-diameter <px>` Minimum nuclei diameter
   - `--min-cell-diameter <px>` Minimum cell diameter
-- **Run:** `nix develop . uv run python src/extract_features_with_size_filter.py --input /work/datasets/aliby_output --output output/ --model cp_measure --filter-border-cells --filter-size`
+- **Run:** `nix develop . uv run python src/extract_features_with_size_filter.py --input data/aliby_output --output output/ --model cp_measure --filter-border-cells --filter-size`
 
 ## Step 1d: Reformat Raw CellProfiler Profiles
 - **Script:** `src/reformat_raw_cp_profiles.py`
@@ -63,7 +63,7 @@
 - **Input:** Compressed zarr files (lossy codecs) + zstd reference zarr
 - **Output:** `quality_metrics.csv`, violin plots (PSNR, SSIM, LPIPS)
 - **Deps:** see `analysis/image_quality/pyproject.toml` (torch, torchmetrics, lpips, zarr, imagecodecs)
-- **Args:** `--data-dir <path>` (default: `/work/datasets/jump_target2_4plate`), `--figures-only` (skip computation, plot from existing CSV)
+- **Args:** `--data-dir <path>` (default: `data/jump_target2_4plate`), `--figures-only` (skip computation, plot from existing CSV)
 - **Run:** `cd analysis/image_quality && uv run python compare_codecs.py --data-dir /path/to/zarr/files`
 
 ## Auxiliary: Compression Parameter Exploration
@@ -92,7 +92,7 @@
   - `--filter-percentile <N>` Filter outlier wells by cell count percentile
   - `--samples <N>` Limit to N samples for quick testing
   - `--visualize-sample` / `--visualize-sample-grid` + `--well <id>` Single sample visualization
-- **Run:** `nix develop . uv run python analysis/segmentation/compare_segmentations.py --root /work/datasets/aliby_output/cp_measure/jump_target2_4plate --ground-truth zstd.zarr --methods jpegxl_lossy_hq.zarr jpegxl_lossy_mq.zarr --both --fast`
+- **Run:** `nix develop . uv run python analysis/segmentation/compare_segmentations.py --root data/aliby_output/cp_measure/jump_target2_4plate --ground-truth zstd.zarr --methods jpegxl_lossy_hq.zarr jpegxl_lossy_mq.zarr --both --fast`
 - **Utility:** `analysis/segmentation/instance_matching.py` — Instance matching between reference and compressed masks (imported by compare_segmentations.py)
 
 ## Step 3b: Segmentation Plotting
@@ -111,7 +111,7 @@
 - **Script:** `analysis/segmentation/validate_feature_mask_alignment.py`
 - **Purpose:** Verify that extracted features correspond to the correct segmentation masks. Spot-check alignment.
 - **Args:** `--base-path <path>`, `--codec <name>`, `--object-type cell|nuclei`, `--n-samples <N>`, `--output <path>`
-- **Run:** `nix develop . uv run python analysis/segmentation/validate_feature_mask_alignment.py --base-path /work/datasets/aliby_output/cp_measure/jump_target2_4plate`
+- **Run:** `nix develop . uv run python analysis/segmentation/validate_feature_mask_alignment.py --base-path data/aliby_output/cp_measure/jump_target2_4plate`
 
 - **Script:** `analysis/segmentation/visualize_cell_compression.py`
 - **Purpose:** Visualize how individual cells look across compression levels. Useful for qualitative assessment.
@@ -121,7 +121,7 @@
 - **Script:** `analysis/segmentation/interactive_cell_count_viewer.py`
 - **Purpose:** Interactive Panel dashboard for browsing cell count differences with images and masks.
 - **Args:** `--csv <path>` (required), `--mask-root <path>` (required), `--zarr-root <path>`, `--port <N>`
-- **Run:** `nix develop . uv run python analysis/segmentation/interactive_cell_count_viewer.py --csv output/large_cell_count_diff.csv --mask-root /work/datasets/aliby_output/cp_measure/jump_target2_4plate`
+- **Run:** `nix develop . uv run python analysis/segmentation/interactive_cell_count_viewer.py --csv output/large_cell_count_diff.csv --mask-root data/aliby_output/cp_measure/jump_target2_4plate`
 
 - **Script:** `analysis/segmentation/segmentation_dashboard.py`
 - **Purpose:** Interactive Panel dashboard for exploring segmentation comparison results with instance mappings.
@@ -151,7 +151,7 @@
 - **Output:** Per-cell and per-site feature correlation plots/CSVs across codecs, feature ranking
 - **Args:**
   - `--mappings-dir <path>` (required) Directory with instance mapping parquet files
-  - `--features-base <path>` Base path for feature profiles (default: `/work/datasets/aliby_output/cp_measure/jump_target2_4plate`)
+  - `--features-base <path>` Base path for feature profiles (default: `data/aliby_output/cp_measure/jump_target2_4plate`)
   - `--gt-codec <name>` Ground truth codec (default: `zstd.zarr`)
   - `--codecs <name> [...]` Codecs to compare (default: jpegxl variants)
   - `--object-type cell|nuclei` (default: `cell`)
@@ -236,7 +236,7 @@ Batch scripts that orchestrate Step 5 across many datasets and codecs, with GPU 
   - `--min-fill-rate <float>` Minimum plate fill rate (default: 0.25)
   - `--min-replicates <int>` Minimum replicates per compound (default: 4)
   - `--seed <int>` Random seed for negative control sampling (default: 42)
-- **Run:** `nix develop . uv run python scripts/build_metadata_dataset.py --annotations-db /work/datasets/jump_core/annotations/jump_metadata.duckdb --annotations-cc /work/datasets/jump_core/annotations/annotations_compound_compound.parquet --annotations-cg /work/datasets/jump_core/annotations/annotations_compound_gene.parquet --profiles /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet --output-dir metadata/ --save-intermediates`
+- **Run:** `nix develop . uv run python scripts/build_metadata_dataset.py --annotations-db data/annotations/jump_metadata.duckdb --annotations-cc data/annotations/annotations_compound_compound.parquet --annotations-cg data/annotations/annotations_compound_gene.parquet --profiles data/raw/raw_jump_CP_profiles/profiles.parquet --output-dir metadata/ --save-intermediates`
 
 - **Notebook:** `scripts/04_refchemdb_match.ipynb`
 - **Purpose:** Generates `refchemdb_conf_jump_matched.parquet` — the RefChemDB target annotation file used as optional input to `build_metadata_dataset.py` Step 6 (via `--refchemdb`). Filters RefChemDB to gene targets with confident interactions, adds CrossModalityTier and WithinModalityTier classifications, and matches compound mode with perturbation modality.

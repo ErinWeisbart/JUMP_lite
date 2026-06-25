@@ -48,7 +48,7 @@ steps:
   - name: merge_metadata
     enabled: true
     params:
-      metadata_path: /home/jfredinh/projects/JUMP_core/metadata/jump_target2_4plate_full_metadata.parquet
+      metadata_path: ${hydra:runtime.cwd}/../../metadata/metadata.parquet
       skip_merge: false
 
   # Step 3: Normalization (RobustMAD, Standardize, or None)

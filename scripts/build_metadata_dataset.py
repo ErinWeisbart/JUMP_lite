@@ -24,20 +24,20 @@ Dependencies:
 Usage:
     # Full pipeline from scratch:
     python build_metadata_dataset.py \\
-        --annotations-db /work/datasets/jump_core/annotations/jump_metadata.duckdb \\
-        --annotations-cc /work/datasets/jump_core/annotations/annotations_compound_compound.parquet \\
-        --annotations-cg /work/datasets/jump_core/annotations/annotations_compound_gene.parquet \\
-        --profiles /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet \\
-        --refchemdb /path/to/refchemdb_conf_jump_matched.parquet \\
-        --output-dir /home/jfredinh/projects/JUMP_core/metadata \\
+        --annotations-db data/annotations/jump_metadata.duckdb \\
+        --annotations-cc data/annotations/annotations_compound_compound.parquet \\
+        --annotations-cg data/annotations/annotations_compound_gene.parquet \\
+        --profiles data/raw/raw_jump_CP_profiles/profiles.parquet \\
+        --refchemdb data/annotations/refchemdb_conf_jump_matched.parquet \\
+        --output-dir metadata/ \\
         --save-intermediates
 
     # Resume from step 5 (if intermediates already exist):
     python build_metadata_dataset.py \\
         --skip-to 5 \\
-        --profiles /work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet \\
-        --refchemdb /path/to/refchemdb_conf_jump_matched.parquet \\
-        --output-dir /home/jfredinh/projects/JUMP_core/metadata
+        --profiles data/raw/raw_jump_CP_profiles/profiles.parquet \\
+        --refchemdb data/annotations/refchemdb_conf_jump_matched.parquet \\
+        --output-dir metadata/
 """
 
 from __future__ import annotations
@@ -2012,13 +2012,13 @@ def parse_args() -> argparse.Namespace:
     input_group.add_argument(
         "--annotations-db",
         type=str,
-        default="/work/datasets/jump_core/annotations/jump_metadata.duckdb",
+        default="data/annotations/jump_metadata.duckdb",
         help="Path to jump_metadata.duckdb (Step 1). Default: %(default)s",
     )
     input_group.add_argument(
         "--annotations-cc",
         type=str,
-        default="/work/datasets/jump_core/annotations/annotations_compound_compound.parquet",
+        default="data/annotations/annotations_compound_compound.parquet",
         help=(
             "Path to compound-compound annotations parquet (Step 1). "
             "Default: %(default)s"
@@ -2027,7 +2027,7 @@ def parse_args() -> argparse.Namespace:
     input_group.add_argument(
         "--annotations-cg",
         type=str,
-        default="/work/datasets/jump_core/annotations/annotations_compound_gene.parquet",
+        default="data/annotations/annotations_compound_gene.parquet",
         help=(
             "Path to compound-gene annotations parquet (Step 1). "
             "Default: %(default)s"
@@ -2036,13 +2036,13 @@ def parse_args() -> argparse.Namespace:
     input_group.add_argument(
         "--profiles",
         type=str,
-        default="/work/datasets/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet",
+        default="data/raw/raw_jump_CP_profiles/profiles.parquet",
         help="Path to raw JUMP CP profiles parquet (Step 5). Default: %(default)s",
     )
     input_group.add_argument(
         "--refchemdb",
         type=str,
-        default="/home/jfredinh/projects/JUMP_core/metadata/refchemdb_conf_jump_matched.parquet",
+        default="data/annotations/refchemdb_conf_jump_matched.parquet",
         help=(
             "Path to refchemdb_conf_jump_matched.parquet (Steps 6-7). "
             "Default: %(default)s"
@@ -2114,7 +2114,7 @@ def parse_args() -> argparse.Namespace:
     output_group.add_argument(
         "--output-dir",
         type=str,
-        default="/home/jfredinh/projects/JUMP_core/metadata",
+        default="metadata",
         help="Output directory for all files. Default: %(default)s",
     )
 

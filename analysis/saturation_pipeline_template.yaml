@@ -42,7 +42,7 @@ steps:
 - enabled: true
   name: merge_metadata
   params:
-    metadata_path: /work/users/jfredinh/projects/cleaning-JUMP_CORE/metadata/metadata_dataset_filtered_4reps.parquet
+    metadata_path: ${oc.env:JUMP_LITE_ROOT,${hydra:runtime.cwd}/../..}/metadata/metadata_dataset_filtered_4reps.parquet
     skip_merge: false
 - enabled: false
   name: normalize_robustmad

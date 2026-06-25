@@ -782,7 +782,7 @@ def main():
     parser.add_argument("--mappings-dir", type=str, required=True,
                         help="Directory with instance mapping parquet files")
     parser.add_argument("--features-base", type=str,
-                        default="/work/datasets/aliby_output/cp_measure/jump_target2_4plate",
+                        default="data/aliby_output/cp_measure/jump_target2_4plate",
                         help="Base path for feature profiles")
     parser.add_argument("--gt-codec", type=str, default="zstd.zarr",
                         help="Ground truth codec")

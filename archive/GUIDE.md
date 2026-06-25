@@ -32,10 +32,10 @@ pixi --version
 ### 3. Data root
 
 All external data lives under a single root directory. The justfile defaults to
-`DATA_ROOT=/work/datasets` — override it for a different machine:
+`DATA_ROOT=data` — override it for a different machine:
 
 ```bash
-export DATA_ROOT=/work/datasets  # default, change as needed
+export DATA_ROOT=data  # default, change as needed
 ```
 
 **External data** (under `$DATA_ROOT`):
@@ -120,8 +120,8 @@ uv run python src/compress_tif.py
 
 ```bash
 uv run python src/compress_tif_single.py \
-    --input /work/datasets/jump_target2_4plate/raw \
-    --output /work/datasets/jump_target2_4plate \
+    --input data/jump_target2_4plate/raw \
+    --output data/jump_target2_4plate \
     --codec jpegxl_lossy_mq \
     --n-jobs 16
 ```

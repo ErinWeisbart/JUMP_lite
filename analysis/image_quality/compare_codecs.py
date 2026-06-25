@@ -134,7 +134,7 @@ def main():
     import random
     parser = argparse.ArgumentParser(description="Compare image quality metrics between lossy codecs and zstd reference")
     parser.add_argument("--figures-only", action="store_true", help="Only generate figures from existing quality_metrics.csv")
-    parser.add_argument("--data-dir", type=Path, default=Path("/work/datasets/jump_target2_4plate"), help="Directory containing zarr files")
+    parser.add_argument("--data-dir", type=Path, default=Path("data/jump_target2_4plate"), help="Directory containing zarr files")
     parser.add_argument("--n-samples", type=int, default=None, help="Number of sites to sample (default: use all sites)")
     parser.add_argument("--skip-lpips", action="store_true", help="Skip LPIPS computation (10x faster, SSIM usually sufficient)")
     parser.add_argument("--lpips-net", type=str, default="alex", choices=["alex", "vgg", "squeeze"],

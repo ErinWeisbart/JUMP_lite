@@ -503,8 +503,8 @@ class FeatureMapper:
 def main():
     """Main execution function."""
     # File paths
-    file1 = '/home/jfredinh/projects/JUMP_core/output/raw_jump_cp_profiles_reformatted_filtered.parquet'
-    file2 = '/home/jfredinh/projects/JUMP_core/output/cp_measure_jump_target2_4plate_zstd_raw_features.parquet'
+    file1 = 'data/features/raw_jump_cp_profiles_reformatted_filtered.parquet'
+    file2 = 'data/features/cp_measure_jump_target2_4plate_zstd_raw_features.parquet'
 
     # Create mapper
     mapper = FeatureMapper(file1, file2)
@@ -517,7 +517,7 @@ def main():
 
     # Generate report
     mapper.generate_report(mapping, ambiguous, coverage,
-                          output_dir='/home/jfredinh/projects/JUMP_core/output/feature_mapping')
+                          output_dir='data/results/feature_mapping')
 
     print("\nMapping complete!")
 

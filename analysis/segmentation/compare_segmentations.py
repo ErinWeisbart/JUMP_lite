@@ -4,6 +4,7 @@ Compare segmentation masks from different compression methods against ground tru
 """
 
 import argparse
+import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -292,7 +293,7 @@ def load_original_image(root: Path, method: str, source_id: str, mask_file: str,
     Returns a 3-channel RGB representation using specified channels.
     """
     # Try to load from the source Zarr archive first
-    zarr_store_path = Path("/work/datasets/jump_target2_4plate/zstd.zarr")
+    zarr_store_path = Path(os.environ.get("ZARR_ROOT", "data/jump_target2_4plate")) / "zstd.zarr"
     result = load_zarr_image(zarr_store_path, source_id, channels)
     if result is not None:
         return result
@@ -673,7 +674,7 @@ def visualize_compression_grid(root: Path, zarr_root: Path, gt_method: str, meth
 
     Args:
         root: Root directory containing CellProfiler output (segmentation masks)
-        zarr_root: Root directory containing zarr source images (e.g., /work/datasets/jump_target2_4plate)
+        zarr_root: Root directory containing zarr source images (e.g., data/jump_target2_4plate)
         gt_method: Ground truth method name (e.g., 'zstd.zarr')
         methods: List of compression methods to compare
         source_id: Well/source identifier to visualize
@@ -1710,7 +1711,7 @@ def main():
     parser.add_argument("--visualize-sample-grid", action="store_true", help="Visualize a grid of samples for different compressions and the difference between them (requires --well, --visualize-sample and one --methods entry)")
     parser.add_argument("--well", type=str, default=None, help="Source/well ID for single sample visualization")
     parser.add_argument("--file", type=str, default=None, help="Specific mask file name for single sample visualization (default: first file found)")
-    parser.add_argument("--zarr-root", type=str, default="/work/datasets/jump_target2_4plate", help="Root directory containing zarr source images")
+    parser.add_argument("--zarr-root", type=str, default=os.environ.get("ZARR_ROOT", "data/jump_target2_4plate"), help="Root directory containing zarr source images")
     parser.add_argument("--samples", type=int, default=None, help="Limit to N samples for quick testing (default: all)")
     parser.add_argument("--filter-percentile", type=float, default=None, help="Filter out wells in bottom and top N percentile of cell count based on ground truth (e.g., 5 filters bottom 5%% and top 5%%)")
     parser.add_argument("--save-mappings", action="store_true", help="Save instance ID mappings between GT and predictions to a parquet file")

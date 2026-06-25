@@ -1036,7 +1036,7 @@ def main() -> None:
         "--annotations-cc",
         type=Path,
         default=Path(
-            "/work/datasets/jump_lite/archive/jump_core/annotations/"
+            "data/annotations/"
             "annotations_compound_compound.parquet"
         ),
     )
@@ -1044,7 +1044,7 @@ def main() -> None:
         "--annotations-gg",
         type=Path,
         default=Path(
-            "/work/datasets/jump_lite/archive/jump_core/annotations/"
+            "data/annotations/"
             "annotations_gene_gene.parquet"
         ),
     )
@@ -1059,7 +1059,7 @@ def main() -> None:
         "--annotations-cg-curated",
         type=Path,
         default=Path(
-            "/work/datasets/jump_lite/archive/jump_core/annotations/"
+            "data/annotations/"
             "annotations_compound_gene_curated.parquet"
         ),
         help="Raw curated compound-gene parquet (used by --mode strict).",
@@ -1068,7 +1068,7 @@ def main() -> None:
         "--inchikey-map-cg",
         type=Path,
         default=Path(
-            "/work/datasets/jump_lite/archive/jump_core/annotations/"
+            "data/annotations/"
             "inchikey_to_jcp2022_mapping_compound_gene.csv"
         ),
         help="InChIKey→JCP map for the cg path (used by --mode strict).",

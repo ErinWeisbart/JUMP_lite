@@ -9,13 +9,13 @@ Drop-in replacement for extract_features.py with the following optimizations:
 
 Usage:
     # Auto-discover and process all MODEL/COMPRESSION combinations
-    python src/extract_features.py --input /work/datasets/aliby_output --output ./output
+    python src/extract_features.py --input data/aliby_output --output ./output
 
     # Process specific model only
-    python src/extract_features.py --input /work/datasets/aliby_output --model cp_measure --output ./output
+    python src/extract_features.py --input data/aliby_output --model cp_measure --output ./output
 
     # Control parallelism (default: all cores)
-    python src/extract_features.py --input /work/datasets/aliby_output --output ./output --n-jobs 4
+    python src/extract_features.py --input data/aliby_output --output ./output --n-jobs 4
 """
 
 import argparse
@@ -657,13 +657,13 @@ def main():
         epilog="""
 Examples:
   # Auto-discover and process all combinations (uses all CPU cores)
-  python src/extract_features.py --input /work/datasets/aliby_output --output ./output
+  python src/extract_features.py --input data/aliby_output --output ./output
 
   # Process specific model with 4 workers
-  python src/extract_features.py --input /work/datasets/aliby_output --model cp_measure --output ./output --n-jobs 4
+  python src/extract_features.py --input data/aliby_output --model cp_measure --output ./output --n-jobs 4
 
   # Sequential mode (like original extract_features.py)
-  python src/extract_features.py --input /work/datasets/aliby_output --output ./output --n-jobs 1
+  python src/extract_features.py --input data/aliby_output --output ./output --n-jobs 1
         """,
     )
     parser.add_argument(

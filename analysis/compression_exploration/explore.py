@@ -13,7 +13,7 @@ parser.add_argument("--image", type=str, help="Path to specific image (default: 
 parser.add_argument("--threshold", type=int, default=-1, help="Only consider peaks above this value (default: -1)")
 args = parser.parse_args()
 
-RAW = Path("/work/datasets/jump_target2_4plate_bak/raw/")
+RAW = Path("data/raw/jump_target2_4plate/raw/")
 DISTS = [1, 2, 3, 4, 5, 7, 10, 12, 15]
 EFFORTS = [1, 2, 3, 4, 5, 6]
 

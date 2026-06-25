@@ -60,11 +60,11 @@ copies live under non-default names, so symlink them in explicitly:
 
 ```bash
 # lite sweep (~976 GB at canonical path)
-ln -s /work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/variance_first_v11_lite \
+ln -s <path/to/canonical/sweep_v11_lite> \
       data/intermediate/sweep_v11_lite
 
 # target2 sweep (~5.4 GB)
-ln -s /work/users/jfredinh/projects/JUMP_core/src/norm_3/data/features/MAIN_RESULTS__figure_4_variance_first_v11 \
+ln -s <path/to/canonical/sweep_v11> \
       data/features/variance_first_v11
 
 # motive eval (~13 MB) — needed for motive figures + tables

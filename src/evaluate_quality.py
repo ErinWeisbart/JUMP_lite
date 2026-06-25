@@ -11,7 +11,7 @@ Usage:
     python src/evaluate_quality.py --no-plots   # Skip visualization generation
 
 The script automatically:
-- Uses the same paths as compress_tif.py (/work/datasets/jump_toy/raw)
+- Uses the same paths as compress_tif.py (data/raw/jump_toy/raw)
 - Discovers all .zarr compression codecs in the output directory
 - Generates quality comparisons and exports results
 
@@ -605,8 +605,8 @@ def main():
     args = parser.parse_args()
 
     # Use the same paths as compress_tif.py
-    #input_dir = Path("/work/datasets/jump_toy_compress/raw")
-    input_dir = Path("/work/datasets/jump_target2_subset_BR00121438/raw")
+    #input_dir = Path("data/raw/jump_toy_compress/raw")
+    input_dir = Path("data/raw/jump_target2_subset_BR00121438/raw")
 
     output_dir = input_dir.parent
     results_dir = output_dir / "results"

@@ -38,10 +38,10 @@ from zarr.codecs import BloscCodec
 # =============================================================================
 
 parser = argparse.ArgumentParser(description="Compress TIF images to zarr with a single codec")
-parser.add_argument("--input", type=str, default="/work/datasets/jump_target2_4plate_bak/raw",
-                    help="Input directory containing .tif files (default: /work/datasets/jump_target2_4plate_bak/raw)")
-parser.add_argument("--output", type=str, default="/work/datasets/jump_target2_4plate/",
-                    help="Output directory for compressed zarr files (default: /work/datasets/jump_target2_4plate/)")
+parser.add_argument("--input", type=str, default="data/raw/jump_target2_4plate/raw",
+                    help="Input directory containing .tif files (default: data/raw/jump_target2_4plate/raw)")
+parser.add_argument("--output", type=str, default="data/jump_target2_4plate/",
+                    help="Output directory for compressed zarr files (default: data/jump_target2_4plate/)")
 parser.add_argument("--codec", type=str, default="zstd",
                     help="Codec to use: zstd, jpegxl_lossy_hq, jpegxl_lossy_mq, jpegxl_lossy_lq, jpegxl_lossy_effort_3 (default: zstd)")
 parser.add_argument("--overwrite", action="store_true",
