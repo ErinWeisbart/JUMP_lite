@@ -179,26 +179,33 @@ compress-lite-all jobs="16":
 # Section 5: Image Quality
 # ═══════════════════════════════════════════════════════════════
 
-# Compute PSNR/SSIM quality metrics (skip LPIPS for speed)
+# Compute PSNR/SSIM quality metrics (skip LPIPS for speed).
+# Intermediate quality_metrics.csv + PNGs → data/intermediate/image_quality/
 quality-metrics n_samples="100" exclude="jpegxl_lossy_mq_new jpegxl_lossy_d50":
-    cd analysis/image_quality && uv run python compare_codecs.py \
+    uv run python analysis/image_quality/compare_codecs.py \
         --data-dir {{ compressed_target2 }} \
         --n-samples {{ n_samples }} \
         --skip-lpips \
-        --exclude-codecs {{ exclude }}
+        --exclude-codecs {{ exclude }} \
+        --output-dir {{ intermediate_dir }}/image_quality
 
 # Compute sharpness-only metrics (Laplacian variance + Tenengrad, no GPU needed)
 quality-sharpness n_samples="100" exclude="jpegxl_lossy_mq_new jpegxl_lossy_d50":
-    cd analysis/image_quality && uv run python compare_codecs.py \
+    uv run python analysis/image_quality/compare_codecs.py \
         --data-dir {{ compressed_target2 }} \
         --n-samples {{ n_samples }} \
         --sharpness-only \
-        --exclude-codecs {{ exclude }}
+        --exclude-codecs {{ exclude }} \
+        --output-dir {{ intermediate_dir }}/image_quality
 
-# Regenerate quality violin plots from existing CSV
+# Regenerate quality violin plots from existing quality_metrics.csv.
+# Final PNGs (incl. supplementary ssim_violin.png) copied to data/results/figures/image_quality/.
 quality-figures:
-    cd analysis/image_quality && uv run python compare_codecs.py \
-        --figures-only
+    uv run python analysis/image_quality/compare_codecs.py \
+        --figures-only \
+        --output-dir {{ intermediate_dir }}/image_quality
+    mkdir -p {{ results_figures }}/image_quality
+    cp {{ intermediate_dir }}/image_quality/*.png {{ results_figures }}/image_quality/
 
 # ═══════════════════════════════════════════════════════════════
 # Section 6: Segmentation Comparison
@@ -1104,6 +1111,7 @@ reproduce: results-v11-lite results-v11 results-v11-lite-best-avg results-v11-be
     just segmentation-iou-ablation
     just feature-cross-well
     just feature-correlation-cp
+    just quality-figures
     just saturation-plot-bestconfig
     @echo
     @echo "DONE. Final outputs under {{ results_figures }}/ and {{ results_tables }}/"

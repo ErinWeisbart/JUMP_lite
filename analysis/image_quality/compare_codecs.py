@@ -142,23 +142,26 @@ def main():
     parser.add_argument("--exclude-codecs", nargs="*", default=[], help="Codec names to exclude (without .zarr suffix)")
     parser.add_argument("--sharpness-only", action="store_true",
                         help="Only compute Laplacian variance and Tenengrad sharpness metrics (no GPU needed)")
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="Output directory (default: analysis/image_quality/output/)")
     args = parser.parse_args()
 
     data_dir = args.data_dir
     reference_codec = "zstd"
 
-    # Ensure output directory exists
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    # Resolve output directory
+    output_dir = args.output_dir if args.output_dir else OUTPUT_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Figures-only mode: load existing results and regenerate plots
     if args.figures_only:
-        csv_path = OUTPUT_DIR / "quality_metrics.csv"
+        csv_path = output_dir / "quality_metrics.csv"
         if not csv_path.exists():
             print(f"Error: {csv_path} not found. Run evaluation first.")
             return
         print(f"Loading existing results from {csv_path}")
         df = pd.read_csv(csv_path)
-        generate_violin_plots(df, OUTPUT_DIR)
+        generate_violin_plots(df, output_dir)
         return
 
     # Find all codecs
@@ -294,7 +297,7 @@ def main():
     print("="*80)
 
     # Save results (merge into existing CSV if sharpness-only)
-    output_path = OUTPUT_DIR / "quality_metrics.csv"
+    output_path = output_dir / "quality_metrics.csv"
     if args.sharpness_only and output_path.exists():
         existing_df = pd.read_csv(output_path)
         sharpness_cols = [
@@ -317,7 +320,7 @@ def main():
         print(f"\nDetailed results saved to: {output_path}")
 
     # Generate violin plots
-    generate_violin_plots(df, OUTPUT_DIR)
+    generate_violin_plots(df, output_dir)
 
 
 def generate_violin_plots(df: pd.DataFrame, output_dir: Path):
