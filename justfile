@@ -12,17 +12,21 @@
 data_root            := env("DATA_ROOT", "./data")
 
 # ─── External data paths ─────────────────────────────────────
-annotations_dir      := data_root / "jump_lite/archive/jump_core" / "annotations"
+annotations_dir      := data_root / "annotations"
 annotations_db       := annotations_dir / "jump_metadata.duckdb"
 annotations_cc       := annotations_dir / "annotations_compound_compound.parquet"
 annotations_cg       := annotations_dir / "annotations_compound_gene.parquet"
-refchemdb            := data_root / "annotations" / "refchemdb_conf_jump_matched.parquet"
+refchemdb_dir        := "data/refchemdb"
+refchemdb_raw        := refchemdb_dir / "refchemdb_inchikey.parquet"
+refchemdb_overlap    := refchemdb_dir / "ref_chem_overlap.parquet"
+refchemdb            := refchemdb_dir / "refchemdb_conf_jump_matched.parquet"
 cp_profiles          := data_root / "jump_core_annotated" / "raw_jump_CP_profiles" / "profiles.parquet"
 raw_images_target2   := data_root / "jump_lite/archive/jump_target2_4plate_bak" / "raw"
 compressed_target2   := data_root / "jump_target2_4plate"
 raw_images_lite      := data_root / "jump_lite" / "imgs" / "raw"
 compressed_lite      := data_root / "jump_lite" / "imgs"
 aliby_output         := env("ALIBY_OUTPUT", data_root / "jump_lite" / "aliby_output")
+manifest_dir         := data_root / "manifest"
 
 # ─── Dataset-specific paths ──────────────────────────────────
 # target2
@@ -1082,11 +1086,12 @@ reproduce: results-v11-lite results-v11 results-v11-lite-best-avg results-v11-be
     @echo "DONE. Final outputs under {{ results_figures }}/ and {{ results_tables }}/"
 
 # End-to-end from compressed images → final paper figures.
-# PREREQUISITES NOT YET WRAPPED IN JUST:
-#   1. Raw JUMP images at {{ raw_images_lite }} and {{ raw_images_target2 }}
-#      Use `python src/download_images.py` (no recipe yet).
+# PREREQUISITES (run `just <recipe>` from the bootstrap section below if missing):
+#   1. Raw JUMP images at {{ raw_images_lite }} (run `just build-jl-index download-raw`)
 #   2. Aliby segmentation/cp_measure output under {{ aliby_output }}
-#      That's a separate pipeline run outside this repo.
+#      (run `just aliby-featurize` — requires external aliby + Nahual GPU servers;
+#       see prep/README.md)
+#   3. Annotation DBs + MOTIVE splits + CP profiles — see DATA_SOURCES.md
 # Expect MANY hours of wall time and hundreds of GB of disk for the heavy steps.
 produce-paper:
     # Stage 1: Compression
@@ -1402,3 +1407,61 @@ well-activity model="morphem__std_all__tvn_efaar_e0.5_c304__noprune" codec="raw"
         --features src/norm_3/data/features/best_configs_lite/{{ model }}.parquet \
         --codec {{ codec }} \
         --output analysis/output/well_activity/{{ model }}__{{ codec }}.parquet
+
+# ═══════════════════════════════════════════════════════════════
+# Section 9: Bootstrap (run once if starting from zero)
+# ═══════════════════════════════════════════════════════════════
+# Skip this section if you already have raw TIFFs at {{ raw_images_lite }}
+# and aliby outputs at {{ aliby_output }}. See prep/README.md for details
+# and DATA_SOURCES.md for the upstream artifacts we cannot fetch.
+
+# Build the URI manifest (jl_index_tidy.parquet) from JUMP-cellpainting GitHub + S3.
+build-jl-index:
+    mkdir -p {{ manifest_dir }}
+    cd {{ manifest_dir }} && pixi run duckdb < {{ justfile_directory() }}/prep/build_jl_index.sql
+
+# Download raw TIFFs from cellpainting-gallery S3 using the manifest.
+download-raw n_jobs="16":
+    pixi run python prep/download_raw.py \
+        --manifest {{ manifest_dir }}/jl_index_tidy.parquet \
+        --out-dir {{ raw_images_lite }} \
+        --n-jobs {{ n_jobs }}
+
+# Aliby featurization → aliby_output/. REQUIRES external aliby + Nahual GPU servers.
+aliby-featurize:
+    pixi run python prep/aliby_featurize.py
+
+# Fetch the upstream annotation bundle (Zenodo 18197517 + cpg0042 duckdb) into
+# {{ annotations_dir }}. md5-verified; idempotent.
+fetch-annotations:
+    uv run python prep/fetch_annotations.py --output-dir {{ annotations_dir }}
+
+# Regenerate ref_chem_overlap.parquet from raw RefChemDB + JUMP compound table.
+build-refchemdb-overlap:
+    uv run python prep/build_refchemdb_overlap.py \
+        --raw {{ refchemdb_raw }} \
+        --jump-duckdb {{ annotations_db }} \
+        --output {{ refchemdb_overlap }}
+
+# Regenerate refchemdb_conf_jump_matched.parquet from overlap + JUMP duckdb.
+build-refchemdb-matched:
+    uv run python prep/build_refchemdb_matched.py \
+        --overlap {{ refchemdb_overlap }} \
+        --jump-duckdb {{ annotations_db }} \
+        --output {{ refchemdb }}
+
+# Full chain: raw RefChemDB → overlap → tier-matched parquet.
+build-refchemdb: build-refchemdb-overlap build-refchemdb-matched
+
+# ─── Annotation prep ─────────────────────────────────────────────
+# Regenerate metadata/*.parquet from the upstream annotation bundle. Skip if
+# you trust the committed metadata/ files.
+
+# Run the full annotation chain: fetch upstream → metadata bundle → motive
+# full (needs --motive-splits-path) → motive strict.
+prep-annotations motive_splits_path:
+    just fetch-annotations
+    just build-refchemdb
+    just metadata
+    just motive-curate {{ motive_splits_path }}
+    just motive-curate-strict

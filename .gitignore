@@ -42,7 +42,9 @@ dataset_curration/
 *.zarr/
 results/
 work/
-data/
+data/*
+!data/refchemdb/
+!data/refchemdb/*
 outputs/
 output/
 tmp/
