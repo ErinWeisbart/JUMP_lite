@@ -4416,9 +4416,9 @@ def generate_codec_balanced_absolute_violin(pdf, output_dir: Path, model_colors:
         )
 
     def _decorate(ax, order, title, ylim_bottom=None):
-        ax.set_xlabel("Compression Quality", fontsize=24, fontweight="bold")
+        ax.set_xlabel("", fontsize=24, fontweight="bold")
         ax.set_ylabel(ylabel, fontsize=24, fontweight="bold")
-        ax.set_title(title, fontsize=26, fontweight="bold")
+        ax.set_title("", fontsize=26, fontweight="bold")
         ax.set_xticks(range(len(order)))
         ax.set_xticklabels([codec_labels[c] for c in order], fontsize=20,
                            rotation=45, ha="right")
@@ -4561,9 +4561,9 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     metrics = [
         ("PA CRISPR", "PA_group_crispr_mean_normalized_average_precision"),
         ("PA ORF", "PA_group_orf_mean_normalized_average_precision"),
-        ("PA Compound Diversity", "PA_group_high_mean_normalized_average_precision"),
+        ("PA Compound diverse", "PA_group_high_mean_normalized_average_precision"),
         ("PA Compound Bioactive-library", "PA_group_low_mean_normalized_average_precision"),
-        ("PC Compound Diversity", "PC_group_high_mean_normalized_average_precision"),
+        ("PC Compound diverse", "PC_group_high_mean_normalized_average_precision"),
         ("PC Compound Bioactive-library", "PC_group_low_mean_normalized_average_precision"),
     ]
     metrics = [(t, c) for t, c in metrics if c in pdf.columns and not pdf[c].isna().all()]
@@ -4833,11 +4833,11 @@ def generate_codec_delta_from_raw_groups_plot(pdf, output_dir: Path, model_color
     pa_metrics = [
         ("CRISPR", "PA CRISPR"),
         ("ORF", "PA ORF"),
-        ("Diversity", "PA Compound Diversity"),
+        ("Diversity", "PA Compound diverse"),
         ("Bioactive", "PA Compound Bioactive-library"),
     ]
     pc_metrics = [
-        ("Diversity", "PC Compound Diversity"),
+        ("Diversity", "PC Compound diverse"),
         ("Bioactive", "PC Compound Bioactive-library"),
     ]
     # Filter to metrics that were actually plotted

@@ -317,9 +317,9 @@ def plot_correlation_violinplot(df, output_path=SCRIPT_DIR / "output" / "correla
         ax=ax
     )
 
-    ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+    ax.set_xlabel('', fontsize=24, fontweight='bold')
     ax.set_ylabel('Feature Correlation', fontsize=24, fontweight='bold')
-    ax.set_title('Feature Correlation', fontsize=24, fontweight='bold')
+    ax.set_title('', fontsize=24, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
     ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
@@ -355,9 +355,9 @@ def plot_correlation_boxenplot(df, output_path=SCRIPT_DIR / "output" / "correlat
         ax=ax
     )
 
-    ax.set_xlabel('Compression Quality', fontsize=24, fontweight='bold')
+    ax.set_xlabel('', fontsize=24, fontweight='bold')
     ax.set_ylabel('Feature Correlation', fontsize=24, fontweight='bold')
-    ax.set_title('Feature Correlation', fontsize=24, fontweight='bold')
+    ax.set_title('', fontsize=24, fontweight='bold')
 
     ax.set_xticks(range(len(label_order)))
     ax.set_xticklabels([codec_labels[c] for c in label_order], fontsize=20, rotation=45, ha='right')
