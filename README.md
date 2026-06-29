@@ -19,8 +19,6 @@ ranking, MOTIVE retrieval, segmentation, feature stability).
 ├── analysis/                  per-figure analysis scripts
 ├── scripts/                   one-shot data-prep utilities
 ├── metadata/                  curated metadata used by the pipeline
-├── paper_figures_reference/   reference PNGs from the paper (for visual diff)
-├── archive/                   internal notes, legacy code, old configs
 ```
 
 ## Quick start
