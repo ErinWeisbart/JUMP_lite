@@ -55,7 +55,18 @@ Then:
 
     just aliby-featurize
 
-## Step 4 — RefChemDB confidence-tier annotations (optional)
+## Step 4 — CellProfiler profiles (~13.5 GB)
+
+Downloads `profiles.parquet` from `cpg0016-jump-assembled v1.0c` — the
+assembled CellProfiler features consumed by `just extract-cp-lite` /
+`extract-cp-target2`. Anonymous S3, size-verified (13,550,356,031 bytes),
+idempotent.
+
+    just fetch-cp-profiles
+
+Output: `$DATA_ROOT/jump_core_annotated/raw_jump_CP_profiles/profiles.parquet`.
+
+## Step 5 — RefChemDB confidence-tier annotations (optional)
 
 `data/refchemdb/` ships three parquets:
 
@@ -76,7 +87,7 @@ Both producers reproduce the committed parquets exactly (verified: 181,732
 overlap rows; 34,004 matched rows; identical Cross/WithinModalityTier counts
 Tier0=7, Tier1=49, Tier2=2488, Tier3=31460).
 
-## Step 5 — Annotation curation (optional)
+## Step 6 — Annotation curation (optional)
 
 The `metadata/*.parquet` files are committed, so most reproducers skip this.
 You only need it if you want to regenerate `metadata_dataset_filtered_4reps.parquet`,
@@ -85,20 +96,19 @@ You only need it if you want to regenerate `metadata_dataset_filtered_4reps.parq
 
 To run the full annotation chain from a clean clone:
 
-    just prep-annotations /path/to/motive_splits.parquet
+    just prep-annotations
 
 That umbrella runs:
 1. `just fetch-annotations` — downloads the 4 Zenodo parquets + duckdb to `data/annotations/` (md5-verified)
 2. `just build-refchemdb` — regenerates the RefChemDB overlap + matched parquet
 3. `just metadata` — `scripts/build_metadata_dataset.py` (8-step pipeline)
-4. `just motive-curate <splits>` — `curate_motive.py --mode full`
-5. `just motive-curate-strict` — `curate_motive.py --mode strict`
+4. `just motive-curate` — `curate_motive.py --mode full` (uses the committed `metadata/motive_splits.parquet` by default; override the positional arg to point at a different upstream file)
+5. `just motive-curate-strict` — `curate_motive.py --mode strict --skip-splits`
 
-You can also run any step individually. Strict uses `--skip-splits`, so step 5
-doesn't need the MOTIVE splits path.
+You can also run any step individually.
 
-**Inputs needed from outside this repo**: only the MOTIVE splits parquet
-(`--motive-splits-path`). Everything else is either committed or auto-fetched.
+**Inputs needed from outside this repo**: none — everything is either committed
+or auto-fetched.
 
 ## What this directory deliberately does NOT cover
 
@@ -107,5 +117,3 @@ doesn't need the MOTIVE splits path.
 | JUMP annotation DB (`jump_metadata.duckdb`) | Upstream artifact; not ours to host | `DATA_SOURCES.md` |
 | MOTIVE compound-compound / compound-gene parquets | Sourced from MOTIVE publication | `DATA_SOURCES.md` |
 | RefChemDB matched parquet | Built by `archive/analysis/04_refchemdb_match.py` from RefChemDB raw data | `DATA_SOURCES.md` |
-| MOTIVE splits parquet | Publication-supplied; manual download | `DATA_SOURCES.md` |
-| CellProfiler `profiles.parquet` | External CellProfiler pipeline run | `DATA_SOURCES.md` |

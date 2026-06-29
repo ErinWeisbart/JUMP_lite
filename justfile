@@ -1091,7 +1091,10 @@ reproduce: results-v11-lite results-v11 results-v11-lite-best-avg results-v11-be
 #   2. Aliby segmentation/cp_measure output under {{ aliby_output }}
 #      (run `just aliby-featurize` — requires external aliby + Nahual GPU servers;
 #       see prep/README.md)
-#   3. Annotation DBs + MOTIVE splits + CP profiles — see DATA_SOURCES.md
+#   3. CellProfiler profiles.parquet at {{ cp_profiles }}
+#      (run `just fetch-cp-profiles` — ~13.5 GB anonymous S3 download)
+#   4. Annotation DBs + curated metadata/ (run `just prep-annotations` — all
+#      inputs are committed or auto-fetched; no manual downloads required)
 # Expect MANY hours of wall time and hundreds of GB of disk for the heavy steps.
 produce-paper:
     # Stage 1: Compression
@@ -1174,8 +1177,10 @@ results-5fam-cp-codecs sweep_dir:
         --exclude-codecs mq_new d20_e2 d50 d15 d30
 
 # One-shot: curate MOTIVE annotations + map published splits to JCP2022.
-# Pass the local path of the upstream MOTIVE split file as the only argument.
-motive-curate motive_splits_path:
+# Defaults to the committed metadata/motive_splits.parquet (the canonicalised
+# JCP2022 allowlist; all 26,450 rows labelled "test"). Override to point at a
+# different upstream splits file if regenerating from scratch.
+motive-curate motive_splits_path="metadata/motive_splits.parquet":
     uv run python scripts/curate_motive.py \
         --metadata metadata/metadata_dataset_filtered_4reps.parquet \
         --annotations-cc {{ annotations_cc }} \
@@ -1436,6 +1441,11 @@ aliby-featurize:
 fetch-annotations:
     uv run python prep/fetch_annotations.py --output-dir {{ annotations_dir }}
 
+# Fetch raw CellProfiler profiles.parquet (cpg0016 v1.0c, ~13.5 GB) into
+# {{ cp_profiles }}. Anonymous S3; size-verified; idempotent.
+fetch-cp-profiles:
+    uv run python prep/fetch_cp_profiles.py --output {{ cp_profiles }}
+
 # Regenerate ref_chem_overlap.parquet from raw RefChemDB + JUMP compound table.
 build-refchemdb-overlap:
     uv run python prep/build_refchemdb_overlap.py \
@@ -1458,8 +1468,9 @@ build-refchemdb: build-refchemdb-overlap build-refchemdb-matched
 # you trust the committed metadata/ files.
 
 # Run the full annotation chain: fetch upstream → metadata bundle → motive
-# full (needs --motive-splits-path) → motive strict.
-prep-annotations motive_splits_path:
+# full → motive strict. Defaults to the committed metadata/motive_splits.parquet;
+# override to regenerate from a different upstream MOTIVE splits file.
+prep-annotations motive_splits_path="metadata/motive_splits.parquet":
     just fetch-annotations
     just build-refchemdb
     just metadata

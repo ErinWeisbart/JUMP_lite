@@ -35,7 +35,8 @@ pixi.lock
 
 # Project-specific data
 images/
-metadata/
+metadata/*
+!metadata/motive_splits.parquet
 dataset_curration/
 *.tif
 *.tiff
