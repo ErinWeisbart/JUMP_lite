@@ -638,8 +638,13 @@ def evaluate_phenotypic_consistency_by_subsets(
                         if df_subset.height == 0:
                             continue
 
-                        # Merge target info (compounds not in this tier's annotations will get null)
-                        df_subset = df_subset.join(jcp_targets, on=compound_col, how="left")
+                        # Merge target info (compounds not in this tier's annotations will get null).
+                        # Cast join key to Utf8 on both sides — normalized inputs from norm_3
+                        # carry Metadata_JCP2022 as Categorical while annotations are String,
+                        # which polars refuses to auto-cast across.
+                        df_subset = df_subset.with_columns(pl.col(compound_col).cast(pl.Utf8))
+                        jcp_targets_str = jcp_targets.with_columns(pl.col(compound_col).cast(pl.Utf8))
+                        df_subset = df_subset.join(jcp_targets_str, on=compound_col, how="left")
 
                         # Fill null targets with "unknown" for truly unknown compounds
                         df_subset = df_subset.with_columns(
