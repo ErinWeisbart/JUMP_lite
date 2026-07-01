@@ -200,14 +200,29 @@ quality-figures:
 # Section 6: Segmentation Comparison
 # ═══════════════════════════════════════════════════════════════
 
-# Quick segmentation test (50 samples, cell only)
-segmentation-quick:
+# Compare segmentation masks across codecs — cell, then nuclei, then combined.
+# Writes intermediate CSVs + instance_mappings/*.parquet + detailed_results/*.csv
+# under data/intermediate/segmentation_comparison/. These files are required
+# inputs to segmentation-cell-iou and segmentation-iou-ablation.
+segmentation-compare methods="jpegxl_lossy_hq.zarr jpegxl_lossy_effort_3.zarr jpegxl_lossy_d2_e8.zarr jpegxl_lossy_mq.zarr jpegxl_lossy_lq.zarr jpegxl_lossy_d10.zarr":
     uv run python analysis/segmentation/compare_segmentations.py \
         --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
         --ground-truth zstd.zarr \
-        --methods jpegxl_lossy_hq.zarr jpegxl_lossy_mq.zarr \
+        --methods {{ methods }} \
         --output-dir {{ intermediate_dir }} \
-        --segment-step segment_cell --fast --samples 50
+        --force-rerun --segment-step segment_cell --fast --save-mappings
+    uv run python analysis/segmentation/compare_segmentations.py \
+        --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
+        --ground-truth zstd.zarr \
+        --methods {{ methods }} \
+        --output-dir {{ intermediate_dir }} \
+        --force-rerun --segment-step segment_nuclei --fast --save-mappings
+    uv run python analysis/segmentation/compare_segmentations.py \
+        --root {{ aliby_output }}/cp_measure/jump_target2_4plate \
+        --ground-truth zstd.zarr \
+        --methods {{ methods }} \
+        --output-dir {{ intermediate_dir }} \
+        --both
     mkdir -p {{ results_figures }}/segmentation_comparison
     cp {{ intermediate_dir }}/segmentation_comparison/*.png {{ results_figures }}/segmentation_comparison/
 
@@ -763,7 +778,11 @@ produce-paper:
     # Stage 4: Motive curate + eval
     just motive-curate-strict
     just motive-run-top
-    # Stage 5: Aggregate, plot, and produce all paper figures
+    # Stage 5: Segmentation comparison (produces instance_mappings + detailed_results
+    # under data/intermediate/segmentation_comparison/, required by reproduce's
+    # segmentation-cell-iou and segmentation-iou-ablation)
+    just segmentation-compare
+    # Stage 6: Aggregate, plot, and produce all paper figures
     just reproduce
 
 # Remove everything under data/results/ so `just reproduce` regenerates cleanly.
