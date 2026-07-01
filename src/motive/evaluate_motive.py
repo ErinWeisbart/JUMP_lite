@@ -7,7 +7,7 @@ CLI:
         --input  <some>/output.parquet \
         --output <some>/motive_eval/ \
         --annotations metadata/motive_annotations.parquet \
-        --splits      metadata/motive_splits.parquet
+        --splits      metadata/motive_eval_compounds.parquet
 
 Runs retrieval tasks against MOTIVE labels:
 
@@ -536,7 +536,7 @@ def main() -> None:
     parser.add_argument(
         "--splits",
         type=Path,
-        default=Path("metadata/motive_splits.parquet"),
+        default=Path("metadata/motive_eval_compounds.parquet"),
     )
     parser.add_argument("--split-eval", type=str, default="test")
     parser.add_argument(

@@ -17,7 +17,7 @@ JOBS=${JOBS:-32}
 
 ANN_FULL=${ANN_FULL:-metadata/motive_annotations.parquet}
 ANN_STRICT=${ANN_STRICT:-metadata/motive_annotations_strict.parquet}
-SPLITS=${SPLITS:-metadata/motive_splits.parquet}
+SPLITS=${SPLITS:-metadata/motive_eval_compounds.parquet}
 
 PLOT_FULL=${PLOT_FULL:-data/results/figures/motive_large_full}
 PLOT_STRICT=${PLOT_STRICT:-data/results/figures/motive_large_strict}

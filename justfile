@@ -847,10 +847,10 @@ results-5fam-cp-codecs sweep_dir:
         --exclude-codecs mq_new d20_e2 d50 d15 d30
 
 # One-shot: curate MOTIVE annotations + map published splits to JCP2022.
-# Defaults to the committed metadata/motive_splits.parquet (the canonicalised
+# Defaults to the committed metadata/motive_eval_compounds.parquet (the canonicalised
 # JCP2022 allowlist; all 26,450 rows labelled "test"). Override to point at a
 # different upstream splits file if regenerating from scratch.
-motive-curate motive_splits_path="metadata/motive_splits.parquet":
+motive-curate motive_splits_path="metadata/motive_eval_compounds.parquet":
     uv run python scripts/curate_motive.py \
         --metadata metadata/metadata_dataset_filtered_4reps.parquet \
         --annotations-cc {{ annotations_cc }} \
@@ -864,11 +864,11 @@ motive-eval input output:
         --input {{ input }} \
         --output {{ output }} \
         --annotations metadata/motive_annotations.parquet \
-        --splits metadata/motive_splits.parquet
+        --splits metadata/motive_eval_compounds.parquet
 
 # Curate the STRICT variant of MOTIVE annotations (rel_type-filtered).
 # Writes metadata/motive_annotations_strict.parquet alongside the existing
-# full file. Splits are mode-agnostic — reuse motive_splits.parquet from the
+# full file. Splits are mode-agnostic — reuse motive_eval_compounds.parquet from the
 # full curate run.
 motive-curate-strict:
     uv run python scripts/curate_motive.py \
@@ -881,7 +881,7 @@ motive-curate-strict:
 # Curate the ULTRA-STRICT variant: completed direct-binding allowlist on CG,
 # action-class-aware CC bridge, tightened GG (PPI/binding/PTM only).
 # Writes metadata/motive_annotations_ultra_strict.parquet alongside the
-# existing files. Splits are mode-agnostic — reuse motive_splits.parquet.
+# existing files. Splits are mode-agnostic — reuse motive_eval_compounds.parquet.
 motive-curate-ultra-strict:
     uv run python scripts/curate_motive.py \
         --mode ultra_strict \
@@ -903,7 +903,7 @@ motive-filter-top sweep_results sweep_dir top_n="50" metric="PA_mean_nap" out_li
 
 # Run MOTIVE eval on a precomputed list of output.parquet paths (one per line).
 # Mirrors the sweep-dir → output-dir subtree exactly like motive-eval-sweep.
-motive-eval-list sweep_dir output_dir list_file jobs="4" annotations="metadata/motive_annotations.parquet" splits="metadata/motive_splits.parquet":
+motive-eval-list sweep_dir output_dir list_file jobs="4" annotations="metadata/motive_annotations.parquet" splits="metadata/motive_eval_compounds.parquet":
     #!/usr/bin/env bash
     set -euo pipefail
     SWEEP="{{ sweep_dir }}"
@@ -1008,7 +1008,7 @@ combined-codec-delta-table:
 # Examples:
 #   just motive-eval-sweep src/norm_3/data/features/variance_first_v11_lite
 #   just motive-eval-sweep src/norm_3/data/features/variance_first_v11_lite /scratch/motive_results jobs=8
-motive-eval-sweep sweep_dir output_dir="" jobs="4" annotations="metadata/motive_annotations.parquet" splits="metadata/motive_splits.parquet":
+motive-eval-sweep sweep_dir output_dir="" jobs="4" annotations="metadata/motive_annotations.parquet" splits="metadata/motive_eval_compounds.parquet":
     #!/usr/bin/env bash
     set -euo pipefail
     SWEEP="{{ sweep_dir }}"
@@ -1107,9 +1107,9 @@ build-refchemdb: build-refchemdb-overlap build-refchemdb-matched
 # you trust the committed metadata/ files.
 
 # Run the full annotation chain: fetch upstream → metadata bundle → motive
-# full → motive strict. Defaults to the committed metadata/motive_splits.parquet;
+# full → motive strict. Defaults to the committed metadata/motive_eval_compounds.parquet;
 # override to regenerate from a different upstream MOTIVE splits file.
-prep-annotations motive_splits_path="metadata/motive_splits.parquet":
+prep-annotations motive_splits_path="metadata/motive_eval_compounds.parquet":
     just fetch-annotations
     just build-refchemdb
     just metadata

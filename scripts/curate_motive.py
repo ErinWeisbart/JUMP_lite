@@ -43,7 +43,7 @@ One-shot prep with three modes:
 
   See the long comment above ``ULTRA_STRICT_CG_REL_TYPES`` for rationale.
 
-All modes also write ``motive_splits.parquet`` (mapping the upstream MOTIVE
+All modes also write ``motive_eval_compounds.parquet`` (mapping the upstream MOTIVE
 split file to JCP2022) — same in any mode.
 
 The schema of the output parquet is identical between modes:
@@ -1124,7 +1124,7 @@ def main() -> None:
         "ultra_strict": "motive_annotations_ultra_strict.parquet",
     }[args.mode]
     annotations_out = args.output_dir / annotations_filename
-    splits_out = args.output_dir / "motive_splits.parquet"
+    splits_out = args.output_dir / "motive_eval_compounds.parquet"
 
     _refuse_overwrite(annotations_out, args.force)
     if not args.skip_splits:
