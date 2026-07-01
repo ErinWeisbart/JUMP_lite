@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
 *.so
 .Python
 build/
@@ -22,6 +25,7 @@ wheels/
 
 # Virtual Environments
 .venv/
+.venv.bak/
 venv/
 ENV/
 env/
@@ -32,6 +36,7 @@ pixi.lock
 .direnv/
 .envrc
 .nix-cache/
+result
 
 # Project-specific data
 images/
@@ -54,6 +59,16 @@ tmp/
 *.html
 logs/
 
+# Databases
+*.duckdb
+*.duckdb.wal
+
+# Compressed files
+*.tar.gz
+
+# Temporary files
+/src/tmp.tiff
+
 # Analysis outputs
 analysis/feature_similarity/output/
 analysis/compression_exploration/*.png
@@ -70,6 +85,7 @@ src/norm_3/data/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+.ipynb_checkpoints/
 
 # IDE
 .vscode/
@@ -78,6 +94,7 @@ src/norm_3/data/
 *.swo
 *~
 JUMP_core.code-workspace
+/.agent-shell/
 
 # OS
 .DS_Store

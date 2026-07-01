@@ -1,0 +1,11 @@
+{"metadata": {
+    "title": "JUMP and JUMP-lite indices and associated tables",
+    "creators": [
+        {
+            "name": "Alán F. Muñoz"
+        }
+    ],
+    "description": "Multiple useful tables to query specific images from JUMP and/or map them to JUMP-lite. We also include redlist and graylist tables for plates/batches that should be used under none or some circumstances respectively. The redlist are known to have technical issues, whereas the graylist has plates filled exclusively with negative controls.",
+"upload_type": "dataset",
+"access_right": "open"
+}}
