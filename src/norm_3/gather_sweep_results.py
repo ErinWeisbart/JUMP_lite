@@ -255,6 +255,82 @@ COMPRESSION_DISPLAY = {
     "openphenom_lite_jpegxl_lossy_d20_raw": "ophenom_lite_d20",
 }
 
+# Restored from sweep-smoke: dropped by commit 2b496d7 "cleanup: drop 24 unused
+# generator funcs" but still referenced by _get_codec_label/_get_display_level.
+COMPRESSION_LEVEL = {
+    "raw": 0,       # uncompressed baseline
+    "zstd": 1,      # lossless
+    "hq": 2,        # light lossy
+    "effort_3": 3,  # moderate lossy
+    "d2_e8": 4,     # distance 2 effort 8
+    "mq_new": 5,    # medium quality (new settings)
+    "mq": 6,        # medium quality
+    "lq": 7,        # low quality (heavy lossy)
+    "d10": 8,       # distance 10
+    "d15": 9,       # distance 15
+    "d20": 10,      # distance 20
+    "d20_e2": 10,   # distance 20 effort 2
+    "d30": 11,      # distance 30
+    "d50": 12,      # distance 50 (most lossy)
+}
+
+# Short codec aliases that map to canonical COMPRESSION_LEVEL keys
+_CODEC_ALIASES = {
+    "e3": "effort_3",
+    "effort_3": "effort_3",
+    "hq": "hq",
+    "mq": "mq",
+    "lq": "lq",
+    "zstd": "zstd",
+    "d10": "d10",
+    "d15": "d15",
+    "d20": "d20",
+    "d20_e2": "d20_e2",
+    "d2_e8": "d2_e8",
+    "mq_new": "mq_new",
+    "d25": "d30",  # d25 is displayed name for d30
+    "d30": "d30",
+    "d50": "d50",
+    "raw": "raw",
+}
+
+# Prefixes to strip from display names to get bare codec label
+_MODEL_DISPLAY_PREFIXES = [
+    "dv2_490_",
+    "dv2_rand_rr_", "dv2_rand_lite_", "dv2_rand_",  # rr/lite before non-rr
+    "dv2_rr_", "dv2_lite_", "dv2_cl_", "dv2_",      # rr/lite before cl before bare dv2
+    "morphem_rr_", "morphem_lite_", "morphem_",
+    "subcell_rr_", "subcell_lite_", "subcell_",
+    "ophenom_rr_", "ophenom_lite_", "ophenom_ss_", "ophenom_cl_", "ophenom_",
+    "cp_lite_",     # CellProfiler lite
+    "cp_fbs_",
+    "cc_lite_",     # Cell Count lite
+    "cc_",          # Cell Count baseline
+    "sc01_lite_",   # SubCell clip01 lite
+    "sc01_",        # SubCell clip01
+]
+
+# Map from display name back to compression level rank
+_DISPLAY_TO_LEVEL = {}
+# Map from display name to codec-only label (no model prefix)
+_DISPLAY_TO_CODEC = {}
+for _raw_name, _disp in COMPRESSION_DISPLAY.items():
+    for _prefix in _MODEL_DISPLAY_PREFIXES:
+        if _disp.startswith(_prefix):
+            _codec = _disp[len(_prefix):]
+            _DISPLAY_TO_CODEC[_disp] = _codec
+            _canonical = _CODEC_ALIASES.get(_codec, _codec)
+            if _canonical in COMPRESSION_LEVEL:
+                _DISPLAY_TO_LEVEL[_disp] = COMPRESSION_LEVEL[_canonical]
+            break
+    else:
+        _DISPLAY_TO_CODEC[_disp] = _disp
+        _base = _disp[:-2] if _disp.endswith("_f") else _disp
+        _canonical = _CODEC_ALIASES.get(_base, _base)
+        if _canonical in COMPRESSION_LEVEL:
+            _DISPLAY_TO_LEVEL[_disp] = COMPRESSION_LEVEL[_canonical]
+
+
 # Order for compression codecs (raw first, then filtered, by quality, then embedding models)
 # Canonical codec ordering (lossless → heavy lossy) used to sort codecs within each model family.
 # Maps codec substring patterns found in raw model names to a sort rank.
