@@ -13,9 +13,10 @@ All compressed image datasets and every corresponding per-site Parquet variant
 must contain the exact same frozen set of 855,519 site keys. The MQ Zarr is the
 canonical set for this release.
 
-An upload must only be run through `upload_to_staging.sh`, which executes
-`validate_release.py` first and exits before AWS is called if any inconsistency
-is found.
+Uploads must use either `upload_to_staging.sh` for a single unchanged directory
+or `run_background_upload.sh` for the complete release. Both workflows are
+gated by `validate_release.py` and exit before S3 writes if any inconsistency is
+found.
 
 ## Files
 
@@ -29,10 +30,17 @@ is found.
   prefix-scoped READWRITE credentials. This file must be sourced.
 - `upload_to_staging.sh`: validates and then runs one constrained CPG staging
   sync. It is an AWS dry run unless `--apply` is supplied.
+- `run_background_upload.sh`: supervises the complete v1.0 upload, renews
+  temporary credentials, and safely resumes interrupted image syncs.
+- `upload_profiles_to_staging.py`: concurrently uploads flat local Parquets
+  into the CPG model/source/batch/plate/well-site hierarchy without creating
+  millions of local hard links. Per-variant checkpoints make it resumable.
+- `upload_status.sh`: reports supervisor, component, log, and profile-checkpoint
+  progress for the active background run.
 - `verify_staging.sh`: compares local file count with the recursive staging
   object count after each sync.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
-  the metadata builder and intended for upload with the release.
+  the metadata builder and uploaded with the release.
 
 ## 1. Reconcile the current site discrepancy
 
@@ -79,9 +87,42 @@ python cpg_upload/validate_release.py
 A successful validation reports `CPG release status: ready` and exits zero.
 Anything else blocks upload.
 
-## 4. Activate temporary CPG credentials
+## 4. CPG object layout
 
-Install AWS CLI first, then source:
+The release uses the following agreed `source_all` namespace:
+
+```text
+cpg0016-jump/source_all/
+├── images_compressed/jump_lite/v1.0/<codec>.zarr/
+├── workspace/metadata/jump_lite/v1.0/<release metadata files>
+└── workspace_dl/embeddings/
+    └── <model>-<codec>/jump_lite/v1.0/
+        └── <source>/<batch>/<plate>/<well>-<site>/embedding.parquet
+```
+
+The image codecs are `jpegxl_lossy_mq`, `jpegxl_lossy_hq`, and
+`jpegxl_lossy_d20`. The experimental `zstd.zarr` is not uploaded. Metadata
+includes the dataset README, wide and tidy image indices, perturbation metadata,
+RefChemDB annotations, plate manifest, and release manifest.
+
+Local embedding files are flat and named:
+
+```text
+<source>__<batch>__<plate>__<well>__<site>.parquet
+```
+
+`upload_profiles_to_staging.py` parses that identity and writes the standard CPG
+well-site object key shown above. It maps internal names
+`openphenom_confusing` to `openphenom` and `subcell__clip01` to
+`subcell_clip01`; local data are not renamed.
+
+The original TIFFs and source-specific `load_data_csv` files already exist in
+the six contributing JUMP source folders. They are referenced by the deposited
+indices and are not duplicated under `source_all`.
+
+## 5. Activate temporary CPG credentials
+
+Install AWS CLI v2 first, then source:
 
 ```bash
 source cpg_upload/activate_cpg_credentials.sh
@@ -94,36 +135,72 @@ s3://staging-cellpainting-gallery/cpg0016-jump/*
 ```
 
 and are requested with `READWRITE` permission in `us-east-1` for 12 hours.
+AWS CLI v2 can be used without permanent installation through:
 
-## 5. Upload one release component
+```bash
+nix shell nixpkgs#awscli2
+```
 
-Dry run:
+## 6. Run the complete upload in the background
+
+Launch exactly one supervisor from the repository root:
+
+```bash
+nohup nix shell nixpkgs#awscli2 -c \
+  bash cpg_upload/run_background_upload.sh --apply \
+  > /work/datasets/jump_lite/cpg_upload_logs/launcher.log 2>&1 &
+```
+
+The supervisor validates once before writes, creates a clean metadata view,
+starts metadata plus three image syncs, and starts the transformed embedding
+upload. Image syncs stop after 11 hours, renew their 12-hour credentials, and
+resume. The Python embedding uploader refreshes credentials proactively and
+stores deterministic checkpoints under:
+
+```text
+/work/datasets/jump_lite/cpg_upload_state/v1.0/profiles/
+```
+
+Run logs are stored under a UTC timestamp in:
+
+```text
+/work/datasets/jump_lite/cpg_upload_logs/
+```
+
+The `latest` symlink points to the active or most recent run. Monitor without
+changing S3:
+
+```bash
+cpg_upload/upload_status.sh
+```
+
+Re-running the supervisor is safe: `aws s3 sync` skips matching image objects,
+and profile checkpoints skip successfully uploaded Parquets. No upload command
+uses `--delete` or follows symlinks.
+
+## 7. Upload one unchanged directory
+
+For a one-component dry run:
 
 ```bash
 cpg_upload/upload_to_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 ```
 
-Actual sync:
+Add `--apply` only after reviewing its destination. Destination arguments are
+relative to `cpg0016-jump/source_all/`.
 
-```bash
-cpg_upload/upload_to_staging.sh --apply LOCAL_PATH RELATIVE_DESTINATION
-```
+## 8. Verify staging
 
-The wrapper never uses `--delete`, never follows symlinks, and rejects
-out-of-prefix destinations. Destination arguments are relative to
-`cpg0016-jump/source_all/`; the final image, metadata, and `workspace_dl`
-subpaths should be agreed with the CPG maintainer before the first upload.
-
-## 6. Verify staging
-
-After each applied sync, compare local file count with the staging object count:
+After transfer, compare local and staging object counts:
 
 ```bash
 cpg_upload/verify_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 ```
 
-Only notify the CPG maintainer after every component passes this check and the
-complete release passes `validate_release.py` again.
+Embedding variants require counting their transformed S3 prefix and comparing
+against 855,519 objects each. Only notify the CPG maintainer after all 16
+embedding variants, all three image stores, and metadata pass verification and
+the complete release passes `validate_release.py` again.
 
 ## Deterministic prevention
 

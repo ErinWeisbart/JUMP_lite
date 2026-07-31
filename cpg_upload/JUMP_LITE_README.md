@@ -25,6 +25,53 @@ compressed site back to its five original TIFF URLs.
 Included sources are `source_2`, `source_4`, `source_6`, `source_7`, `source_8`,
 and `source_13`.
 
+## Cell Painting Gallery layout
+
+The release is stored as loose, directly addressable CPG objects under:
+
+```text
+cpg0016-jump/source_all/
+├── images_compressed/
+│   └── jump_lite/
+│       └── v1.0/
+│           ├── jpegxl_lossy_mq.zarr/
+│           ├── jpegxl_lossy_hq.zarr/
+│           └── jpegxl_lossy_d20.zarr/
+├── workspace/
+│   └── metadata/
+│       └── jump_lite/
+│           └── v1.0/
+│               ├── README.md
+│               ├── jump_lite_site_index.parquet
+│               ├── jump_lite_image_index.parquet
+│               ├── jump_lite_perturbation_metadata.parquet
+│               ├── jump_lite_refchem_annotations.parquet
+│               ├── jump_lite_plate_manifest.parquet
+│               └── metadata_manifest.json
+└── workspace_dl/
+    └── embeddings/
+        └── <model>-<image-codec>/
+            └── jump_lite/
+                └── v1.0/
+                    └── <source>/
+                        └── <batch>/
+                            └── <plate>/
+                                └── <well>-<site>/
+                                    └── embedding.parquet
+```
+
+The embedding feature-set identifiers combine model and image input, for
+example `dinov2-jpegxl_lossy_mq` and
+`openphenom-jpegxl_lossy_d20`. Public model labels are `dinov2`,
+`dinov2_random`, `morphem`, `openphenom`, `subcell`, and
+`subcell_clip01`.
+
+JUMP-Lite is an addition to the existing JUMP project, not a new acquisition.
+The original TIFFs and their source-specific `load_data_csv` files remain in
+`source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`.
+They are not duplicated under `source_all`; the deposited site and image
+indices retain the original public TIFF URLs.
+
 The plate collection was defined from the JUMP-Lite plate list and filtered
 against the JUMP redlist and graylist. Six negative-control-only graylisted
 plates were excluded, leaving 557 plates. At most four sites are retained per
@@ -87,8 +134,9 @@ compression variants:
 Broadly, DINOv2 uses AGP/DNA/ER 224-pixel tiles; MorphEm uses all five channels
 with 224-pixel tiles; OpenPhenom uses all five channels with 256-pixel tiles,
 outlier clipping, and 8-bit conversion; and SubCell uses Mito/ER/DNA/AGP with
-448-pixel tiles. The processing scripts deposited with the model outputs are
-the authoritative record of run parameters.
+448-pixel tiles. The processing code in the JUMP-Lite repository and the frozen metadata
+manifest provide the authoritative record of run parameters and release
+identity.
 
 ## Metadata files
 
