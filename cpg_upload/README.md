@@ -37,6 +37,12 @@ found.
   millions of local hard links. Per-variant checkpoints make it resumable.
 - `upload_status.sh`: reports supervisor, component, log, and profile-checkpoint
   progress for the active background run.
+- `rebuild_zstd_from_originals.py`: streams the five original public TIFFs for
+  each frozen MQ site into memory and writes a matching site-major Zarr v3 array
+  with lossless Blosc/Zstd compression. It does not cache TIFFs.
+- `run_zstd_rebuild.sh`: background wrapper with durable logs and completion
+  markers for the resumable Zstd rebuild.
+- `zstd_rebuild_status.sh`: reports the active rebuild checkpoint and log tail.
 - `verify_staging.sh`: compares local file count with the recursive staging
   object count after each sync.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
@@ -178,7 +184,50 @@ Re-running the supervisor is safe: `aws s3 sync` skips matching image objects,
 and profile checkpoints skip successfully uploaded Parquets. No upload command
 uses `--delete` or follows symlinks.
 
-## 7. Upload one unchanged directory
+## 7. Rebuild the optional lossless Zstd store
+
+The legacy local `zstd.zarr` is an interrupted one-plate experiment with a
+well/channel layout and is not part of v1.0. A clean replacement can be rebuilt
+from original TIFFs while the v1.0 upload continues:
+
+```bash
+nohup env ZSTD_REBUILD_WORKERS=48 \
+  bash cpg_upload/run_zstd_rebuild.sh --apply \
+  > /work/datasets/jump_lite/zstd_rebuild_logs/launcher.log 2>&1 &
+```
+
+The frozen site index supplies exactly the 855,519 MQ keys and five original
+TIFF URLs per site. For each site, the builder:
+
+1. downloads AGP, DNA, ER, Mito, and RNA directly from the public CPG;
+2. decodes them in memory without retaining raw TIFFs;
+3. checks shape and dtype against the corresponding MQ array;
+4. writes one `(5, y, x)` Zarr v3 array and one Blosc/Zstd level-9 chunk; and
+5. checkpoints progress after each bounded batch.
+
+The original image-store parent is not writable by the uploader, so the
+resumable building store, validated replacement, and state are kept at:
+
+```text
+/work/datasets/jump_lite/zstd_rebuild/v1.0/zstd.building.zarr/
+/work/datasets/jump_lite/zstd_rebuild/v1.0/zstd.zarr/
+/work/datasets/jump_lite/zstd_rebuild_state/v1.0/checkpoint.json
+```
+
+Monitor it with:
+
+```bash
+cpg_upload/zstd_rebuild_status.sh
+```
+
+On completion, the builder verifies the full site count and canonical SHA-256
+digest and atomically renames the writable building store to `zstd.zarr`. The
+legacy incomplete store in the protected image directory remains untouched; an
+administrator can swap in the validated replacement afterward. A truncated
+test run never performs final renaming. The rebuilt Zstd is not automatically
+added to or uploaded with v1.0.
+
+## 8. Upload one unchanged directory
 
 For a one-component dry run:
 
@@ -189,7 +238,7 @@ cpg_upload/upload_to_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 Add `--apply` only after reviewing its destination. Destination arguments are
 relative to `cpg0016-jump/source_all/`.
 
-## 8. Verify staging
+## 9. Verify staging
 
 After transfer, compare local and staging object counts:
 
