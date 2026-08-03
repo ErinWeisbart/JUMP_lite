@@ -134,9 +134,9 @@ compression variants:
 Broadly, DINOv2 uses AGP/DNA/ER 224-pixel tiles; MorphEm uses all five channels
 with 224-pixel tiles; OpenPhenom uses all five channels with 256-pixel tiles,
 outlier clipping, and 8-bit conversion; and SubCell uses Mito/ER/DNA/AGP with
-448-pixel tiles. The processing code in the JUMP-Lite repository and the frozen metadata
-manifest provide the authoritative record of run parameters and release
-identity.
+448-pixel tiles. The processing code in the JUMP-Lite repository and the
+frozen metadata manifest provide the authoritative record of run parameters
+and release identity.
 
 ## Metadata files
 
@@ -191,11 +191,115 @@ upload guidance.
 
 ## Provenance
 
+### Image and site lineage
+
+The release follows this lineage for every site:
+
+```text
+original JUMP TIFFs in cpg0016-jump/source_<n>/images/
+    ↓ five URLs frozen in jump_lite_site_index.parquet
+site-major uint16 array in <image-codec>.zarr/<site-key>
+    ↓ model-specific channel selection, preprocessing, and tiling
+local per-site Parquet in <model>/<image-codec>.zarr/profiles/
+    ↓ object-key transformation only; Parquet bytes are unchanged
+CPG workspace_dl/embeddings/<model>-<image-codec>/...
+```
+
+The JUMP-Lite plate list was filtered against the JUMP redlist and graylist,
+and at most four sites per source/batch/plate/well were selected in
+`Metadata_Site` order. The exact 855,519-site release manifest is frozen from
+the completed MQ store. HQ and D20 contain the same site identities, but their
+profile values come from their respective compressed pixels: an HQ profile is
+computed from `jpegxl_lossy_hq.zarr`, a D20 profile from
+`jpegxl_lossy_d20.zarr`, and an MQ profile from `jpegxl_lossy_mq.zarr`. Profiles
+are never substituted across codecs.
+
+Each compressed site array contains the five original channels in
+`AGP, DNA, ER, Mito, RNA` order. The profile inputs are:
+
+| Public model label | Model/checkpoint identifier | Input channels | Tile and preprocessing | Uploaded image variants |
+|---|---|---|---|---|
+| `dinov2` | `facebookresearch/dinov2`, `dinov2_vits14` | AGP, DNA, ER | 224 px | MQ, HQ, D20 |
+| `dinov2_random` | `dinov2_vits14`, randomly initialized (`pretrained=False`) | AGP, DNA, ER | 224 px | MQ, HQ, D20 |
+| `morphem` | `CaicedoLab/MorphEm` | AGP, DNA, ER, Mito, RNA | 224 px | MQ, HQ, D20 |
+| `openphenom` | `recursionpharma/OpenPhenom` | AGP, DNA, ER, Mito, RNA | 256 px, outlier clipping, 8-bit conversion | MQ, HQ, D20 |
+| `subcell` | SubCell `mae_contrast_supcon_model`, channels `rybg` | Mito, ER, DNA, AGP | 448 px | MQ |
+| `subcell_clip01` | Same SubCell model | Mito, ER, DNA, AGP | 448 px, clipped input | MQ, HQ, D20 |
+
+These are per-site embedding outputs, not well-level profiles. There are
+855,519 Parquets in each of 16 model/codec variants, for 13,688,304 Parquets in
+total. No profiles in v1.0 come from the experimental lossless Zstd rebuild.
+
+The featurization driver is `prep/aliby_featurize.py`; it dispatches each Zarr
+site through Aliby and Nahual model servers. The release-building, validation,
+and path-mapping implementation is under `cpg_upload/` in:
+
+- <https://github.com/afermg/JUMP_lite>
+
 The index-generation inputs and related JUMP/JUMP-Lite tables are described at:
 
 - Zenodo: <https://doi.org/10.5281/zenodo.18705140>
 - Cell Painting Gallery JUMP project:
   <https://registry.opendata.aws/cellpainting-gallery/>
+
+## Local-to-CPG mapping
+
+### Images and metadata
+
+| Component | Local source | Staging/public object prefix |
+|---|---|---|
+| JPEG XL site arrays | `.../images/compressed/compressed_test/jump_lite_updated/<codec>.zarr/` | `cpg0016-jump/source_all/images_compressed/jump_lite/v1.0/<codec>.zarr/` |
+| Release README | `/work/datasets/jump_lite/cpg_release/README.md` | `cpg0016-jump/source_all/workspace/metadata/jump_lite/v1.0/README.md` |
+| Metadata and annotations | `/work/datasets/jump_lite/cpg_release/metadata/` | `cpg0016-jump/source_all/workspace/metadata/jump_lite/v1.0/` |
+
+Image Zarr keys are preserved exactly. Metadata files and image objects are
+uploaded byte-for-byte with `aws s3 sync`; no transcoding occurs during upload.
+
+### Per-site embeddings
+
+A local profile path has the form:
+
+```text
+/work/datasets/jump_lite/aliby_output/jump_lite_rerun/jump_lite_updated/
+    <local-model>/<codec>.zarr/profiles/
+    <source>__<batch>__<plate>__<well>__<site>.parquet
+```
+
+It maps to:
+
+```text
+s3://staging-cellpainting-gallery/cpg0016-jump/source_all/workspace_dl/
+    embeddings/<public-model>-<codec>/jump_lite/v1.0/
+    <source>/<batch>/<plate>/<well>-<site>/embedding.parquet
+```
+
+For example:
+
+```text
+local:
+  dinov2/jpegxl_lossy_mq.zarr/profiles/
+  source_13__20220914_Run1__CP-CC9-R1-01__A01__0.parquet
+
+CPG:
+  workspace_dl/embeddings/dinov2-jpegxl_lossy_mq/jump_lite/v1.0/
+  source_13/20220914_Run1/CP-CC9-R1-01/A01-0/embedding.parquet
+```
+
+The uploader parses the five fields from the local filename and changes only
+the object key. The model-name translations are:
+
+| Local directory | Public CPG label |
+|---|---|
+| `dinov2` | `dinov2` |
+| `dinov2_random` | `dinov2_random` |
+| `morphem` | `morphem` |
+| `openphenom_confusing` | `openphenom` |
+| `subcell` | `subcell` |
+| `subcell__clip01` | `subcell_clip01` |
+
+The `.zarr` suffix is removed from the codec label; for example,
+`jpegxl_lossy_d20.zarr` becomes `jpegxl_lossy_d20`. The local Parquet contents
+are not rewritten.
 
 JUMP-Lite is derived from `cpg0016-jump`; users should cite the primary JUMP
 Cell Painting dataset and the feature-model publications appropriate to their
