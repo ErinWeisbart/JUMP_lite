@@ -34,8 +34,9 @@ cpg0016-jump/source_all/
 ├── images_compressed/
 │   └── jump_lite/
 │       └── v1.0/
-│           ├── jpegxl_lossy_mq.zarr/
+│           ├── zstd.zarr/
 │           ├── jpegxl_lossy_hq.zarr/
+│           ├── jpegxl_lossy_mq.zarr/
 │           └── jpegxl_lossy_d20.zarr/
 ├── workspace/
 │   └── metadata/
@@ -94,20 +95,20 @@ and stores all five channels in one chunk. Channel order is:
 AGP, DNA, ER, Mito, RNA
 ```
 
-Three JPEG XL variants are included:
+Four image variants are included:
 
-| Dataset | JPEG XL distance | Description |
-|---|---:|---|
-| `jpegxl_lossy_hq.zarr` | 1.0 | High quality |
-| `jpegxl_lossy_mq.zarr` | 3.0 | Medium quality and canonical site manifest |
-| `jpegxl_lossy_d20.zarr` | 20.0 | High-compression comparison variant |
+| Dataset | Compression | Approx. size | Description |
+|---|---|---:|---|
+| `zstd.zarr` | lossless Zstd | 5.3 TB | Lossless reference derived from the original TIFFs |
+| `jpegxl_lossy_hq.zarr` | JPEG XL distance 1.0 | 280 GB | High quality |
+| `jpegxl_lossy_mq.zarr` | JPEG XL distance 3.0 | 116 GB | Medium quality and canonical site manifest |
+| `jpegxl_lossy_d20.zarr` | JPEG XL distance 20.0 | 32 GB | High-compression comparison variant |
 
-These arrays are lossy derivatives and should not be interpreted as replacing
-the original JUMP TIFFs. Decoding requires a Zarr-compatible registration of
-the `imagecodecs_jpegxl` codec, such as `imagecodecs.numcodecs.Jpegxl`.
-
-The experimental, incomplete `zstd.zarr` store in the working filesystem is
-not part of this release.
+The JPEG XL arrays are lossy derivatives and should not be interpreted as
+replacing the original JUMP TIFFs; the `zstd.zarr` store is a lossless reference
+for the same frozen site set. Decoding JPEG XL arrays requires a Zarr-compatible
+registration of the `imagecodecs_jpegxl` codec, such as
+`imagecodecs.numcodecs.Jpegxl`.
 
 ## Per-site Parquet outputs
 
@@ -151,14 +152,7 @@ by resampling:
   identifiers, perturbation type, symbols, and grouping information. Empty or
   otherwise unannotated wells remain represented in the site index.
 - `jump_lite_plate_manifest.parquet`: per-plate well and site counts.
-- `metadata_manifest.json`: counts, channel order, artifact sizes, and the
-  SHA-256 digest of the frozen site-key set.
-
-The canonical sorted site-key digest for this release is:
-
-```text
-399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961
-```
+- `metadata_manifest.json`: counts, channel order, and artifact sizes.
 
 ## Annotations
 
@@ -178,16 +172,15 @@ release are excluded from this deposited table.
 
 Before upload, a fail-closed validator requires:
 
-1. MQ, HQ, and D20 to have exactly 855,519 identical site keys.
+1. Zstd, MQ, HQ, and D20 to have exactly 855,519 identical site keys.
 2. Every per-site Parquet collection to have exactly the keys of its associated
    image dataset.
 3. The frozen site and image indices to match the canonical keys and contain all
    five original image URLs.
 4. Metadata, plate, source, well, and annotation invariants to pass.
 
-The upload is blocked if any check fails. Verification after staging compares
-object counts between local sources and S3, following Cell Painting Gallery
-upload guidance.
+Release validation checks object counts and metadata invariants following Cell
+Painting Gallery upload guidance.
 
 ## Provenance
 
@@ -228,7 +221,7 @@ Each compressed site array contains the five original channels in
 
 These are per-site embedding outputs, not well-level profiles. There are
 855,519 Parquets in each of 16 model/codec variants, for 13,688,304 Parquets in
-total. No profiles in v1.0 come from the experimental lossless Zstd rebuild.
+total. No profiles in v1.0 are computed from the lossless Zstd image store.
 
 The featurization driver is `prep/aliby_featurize.py`; it dispatches each Zarr
 site through Aliby and Nahual model servers. The release-building, validation,
@@ -241,65 +234,6 @@ The index-generation inputs and related JUMP/JUMP-Lite tables are described at:
 - Zenodo: <https://doi.org/10.5281/zenodo.18705140>
 - Cell Painting Gallery JUMP project:
   <https://registry.opendata.aws/cellpainting-gallery/>
-
-## Local-to-CPG mapping
-
-### Images and metadata
-
-| Component | Local source | Staging/public object prefix |
-|---|---|---|
-| JPEG XL site arrays | `.../images/compressed/compressed_test/jump_lite_updated/<codec>.zarr/` | `cpg0016-jump/source_all/images_compressed/jump_lite/v1.0/<codec>.zarr/` |
-| Release README | `/work/datasets/jump_lite/cpg_release/README.md` | `cpg0016-jump/source_all/workspace/metadata/jump_lite/v1.0/README.md` |
-| Metadata and annotations | `/work/datasets/jump_lite/cpg_release/metadata/` | `cpg0016-jump/source_all/workspace/metadata/jump_lite/v1.0/` |
-
-Image Zarr keys are preserved exactly. Metadata files and image objects are
-uploaded byte-for-byte with `aws s3 sync`; no transcoding occurs during upload.
-
-### Per-site embeddings
-
-A local profile path has the form:
-
-```text
-/work/datasets/jump_lite/aliby_output/jump_lite_rerun/jump_lite_updated/
-    <local-model>/<codec>.zarr/profiles/
-    <source>__<batch>__<plate>__<well>__<site>.parquet
-```
-
-It maps to:
-
-```text
-s3://staging-cellpainting-gallery/cpg0016-jump/source_all/workspace_dl/
-    embeddings/<public-model>-<codec>/jump_lite/v1.0/
-    <source>/<batch>/<plate>/<well>-<site>/embedding.parquet
-```
-
-For example:
-
-```text
-local:
-  dinov2/jpegxl_lossy_mq.zarr/profiles/
-  source_13__20220914_Run1__CP-CC9-R1-01__A01__0.parquet
-
-CPG:
-  workspace_dl/embeddings/dinov2-jpegxl_lossy_mq/jump_lite/v1.0/
-  source_13/20220914_Run1/CP-CC9-R1-01/A01-0/embedding.parquet
-```
-
-The uploader parses the five fields from the local filename and changes only
-the object key. The model-name translations are:
-
-| Local directory | Public CPG label |
-|---|---|
-| `dinov2` | `dinov2` |
-| `dinov2_random` | `dinov2_random` |
-| `morphem` | `morphem` |
-| `openphenom_confusing` | `openphenom` |
-| `subcell` | `subcell` |
-| `subcell__clip01` | `subcell_clip01` |
-
-The `.zarr` suffix is removed from the codec label; for example,
-`jpegxl_lossy_d20.zarr` becomes `jpegxl_lossy_d20`. The local Parquet contents
-are not rewritten.
 
 JUMP-Lite is derived from `cpg0016-jump`; users should cite the primary JUMP
 Cell Painting dataset and the feature-model publications appropriate to their
