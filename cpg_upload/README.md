@@ -43,6 +43,8 @@ found.
 - `run_zstd_rebuild.sh`: background wrapper with durable logs and completion
   markers for the resumable Zstd rebuild.
 - `zstd_rebuild_status.sh`: reports the active rebuild checkpoint and log tail.
+- `systemd/*.service`: persistent user-service definitions that resume the CPG
+  upload and Zstd rebuild after user-service-manager or host restarts.
 - `verify_staging.sh`: compares local file count with the recursive staging
   object count after each sync.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
@@ -149,13 +151,18 @@ nix shell nixpkgs#awscli2
 
 ## 6. Run the complete upload in the background
 
-Launch exactly one supervisor from the repository root:
+Install and start the persistent user service from the repository root:
 
 ```bash
-nohup nix shell nixpkgs#awscli2 -c \
-  bash cpg_upload/run_background_upload.sh --apply \
-  > /work/datasets/jump_lite/cpg_upload_logs/launcher.log 2>&1 &
+mkdir -p ~/.config/systemd/user
+ln -sfn "$PWD/cpg_upload/systemd/jump-lite-cpg-upload.service" \
+  ~/.config/systemd/user/jump-lite-cpg-upload.service
+systemctl --user daemon-reload
+systemctl --user enable --now jump-lite-cpg-upload.service
 ```
+
+The enabled service survives user-service-manager and host restarts. Check its
+state with `systemctl --user status jump-lite-cpg-upload.service`.
 
 The supervisor validates once before writes, creates a clean metadata view,
 starts metadata plus three image syncs, and starts the transformed embedding
@@ -187,14 +194,20 @@ uses `--delete` or follows symlinks.
 ## 7. Rebuild the optional lossless Zstd store
 
 The legacy local `zstd.zarr` is an interrupted one-plate experiment with a
-well/channel layout and is not part of v1.0. A clean replacement can be rebuilt
-from original TIFFs while the v1.0 upload continues:
+well/channel layout and is not part of v1.0. Install the persistent rebuild
+service to create a clean replacement from original TIFFs while the v1.0 upload
+continues:
 
 ```bash
-nohup env ZSTD_REBUILD_WORKERS=48 \
-  bash cpg_upload/run_zstd_rebuild.sh --apply \
-  > /work/datasets/jump_lite/zstd_rebuild_logs/launcher.log 2>&1 &
+mkdir -p ~/.config/systemd/user
+ln -sfn "$PWD/cpg_upload/systemd/jump-lite-zstd-rebuild.service" \
+  ~/.config/systemd/user/jump-lite-zstd-rebuild.service
+systemctl --user daemon-reload
+systemctl --user enable --now jump-lite-zstd-rebuild.service
 ```
+
+Check service state with
+`systemctl --user status jump-lite-zstd-rebuild.service`.
 
 The frozen site index supplies exactly the 855,519 MQ keys and five original
 TIFF URLs per site. For each site, the builder:
