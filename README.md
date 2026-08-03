@@ -57,13 +57,9 @@ Site identifiers have the form:
 
 The original TIFFs remain in their source-specific `cpg0016-jump/source_<n>/` locations and are not duplicated in JUMP-Lite.
 
-## Provenance and integrity
+## Provenance
 
-The exact site set is frozen across all three image variants and every associated embedding collection. Its sorted site-key SHA-256 is:
-
-```text
-399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961
-```
+The exact site set is frozen across all four image variants. The embedding collections share the same site set for the lossy image variants they cover.
 
 ## How JUMP-Lite was generated
 
