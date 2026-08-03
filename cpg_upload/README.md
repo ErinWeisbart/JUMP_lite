@@ -43,8 +43,13 @@ found.
 - `run_zstd_rebuild.sh`: background wrapper with durable logs and completion
   markers for the resumable Zstd rebuild.
 - `zstd_rebuild_status.sh`: reports the active rebuild checkpoint and log tail.
+- `upload_zstd_to_staging.py`: streams only checkpoint-confirmed complete Zstd
+  arrays to v1.0, withholds the group root until final local validation, and
+  verifies final S3 object count and bytes.
+- `run_zstd_upload.sh` and `zstd_upload_status.sh`: durable wrapper and status
+  report for the concurrent Zstd upload.
 - `systemd/*.service`: persistent user-service definitions that resume the CPG
-  upload and Zstd rebuild after user-service-manager or host restarts.
+  upload, Zstd rebuild, and Zstd upload after the user manager starts.
 - `verify_staging.sh`: compares local file count with the recursive staging
   object count after each sync.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
@@ -108,10 +113,10 @@ cpg0016-jump/source_all/
         └── <source>/<batch>/<plate>/<well>-<site>/embedding.parquet
 ```
 
-The image codecs are `jpegxl_lossy_mq`, `jpegxl_lossy_hq`, and
-`jpegxl_lossy_d20`. The experimental `zstd.zarr` is not uploaded. Metadata
-includes the dataset README, wide and tidy image indices, perturbation metadata,
-RefChemDB annotations, plate manifest, and release manifest.
+The image codecs are lossless `zstd` plus `jpegxl_lossy_mq`,
+`jpegxl_lossy_hq`, and `jpegxl_lossy_d20`. Metadata includes the dataset README,
+wide and tidy image indices, perturbation metadata, RefChemDB annotations, plate
+manifest, and release manifest.
 
 Local embedding files are flat and named:
 
@@ -161,8 +166,10 @@ systemctl --user daemon-reload
 systemctl --user enable --now jump-lite-cpg-upload.service
 ```
 
-The enabled service survives user-service-manager and host restarts. Check its
-state with `systemctl --user status jump-lite-cpg-upload.service`.
+The enabled service resumes whenever the user manager starts. To keep user
+services running after the final login session closes, an administrator must
+run `loginctl enable-linger amunoz`. Check state with
+`systemctl --user status jump-lite-cpg-upload.service`.
 
 The supervisor validates once before writes, creates a clean metadata view,
 starts metadata plus three image syncs, and starts the transformed embedding
@@ -191,12 +198,11 @@ Re-running the supervisor is safe: `aws s3 sync` skips matching image objects,
 and profile checkpoints skip successfully uploaded Parquets. No upload command
 uses `--delete` or follows symlinks.
 
-## 7. Rebuild the optional lossless Zstd store
+## 7. Rebuild and stream the lossless Zstd store
 
-The legacy local `zstd.zarr` is an interrupted one-plate experiment with a
-well/channel layout and is not part of v1.0. Install the persistent rebuild
-service to create a clean replacement from original TIFFs while the v1.0 upload
-continues:
+The legacy local `zstd.zarr` is an interrupted one-plate experiment with an
+incompatible well/channel layout. Install the persistent rebuild service to
+create the v1.0 lossless store directly from original TIFFs:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -235,10 +241,27 @@ cpg_upload/zstd_rebuild_status.sh
 
 On completion, the builder verifies the full site count and canonical SHA-256
 digest and atomically renames the writable building store to `zstd.zarr`. The
-legacy incomplete store in the protected image directory remains untouched; an
-administrator can swap in the validated replacement afterward. A truncated
-test run never performs final renaming. The rebuilt Zstd is not automatically
-added to or uploaded with v1.0.
+legacy incomplete store in the protected image directory remains untouched. A
+truncated test run never performs final renaming.
+
+The streaming uploader can safely overlap the multi-terabyte transfer with the
+rebuild. It follows only completed manifest batches and uploads each chunk before
+its array metadata. It deliberately withholds the group-level `zarr.json` until
+the builder has finalized all 855,519 arrays and the uploader has repeated full
+local validation:
+
+```bash
+ln -sfn "$PWD/cpg_upload/systemd/jump-lite-zstd-upload.service" \
+  ~/.config/systemd/user/jump-lite-zstd-upload.service
+systemctl --user daemon-reload
+systemctl --user enable --now jump-lite-zstd-upload.service
+cpg_upload/zstd_upload_status.sh
+```
+
+State is stored at
+`/work/datasets/jump_lite/cpg_upload_state/v1.0/zstd/checkpoint.json`. The final
+destination is
+`cpg0016-jump/source_all/images_compressed/jump_lite/v1.0/zstd.zarr/`.
 
 ## 8. Upload one unchanged directory
 
@@ -261,7 +284,7 @@ cpg_upload/verify_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 
 Embedding variants require counting their transformed S3 prefix and comparing
 against 855,519 objects each. Only notify the CPG maintainer after all 16
-embedding variants, all three image stores, and metadata pass verification and
+embedding variants, all four image stores, and metadata pass verification and
 the complete release passes `validate_release.py` again.
 
 ## Deterministic prevention

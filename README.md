@@ -6,17 +6,17 @@
 
 ## Dataset at a glance
 
-| | v1.0 |
-|---|---:|
-| JUMP sources | 6 |
-| Plates | 557 |
-| Wells | 213,881 |
-| Image sites | 855,519 |
-| Channels | 5: AGP, DNA, ER, Mito, RNA |
-| Compressed image variants | 3 |
-| Embedding variants | 16 |
-| Per-site embedding Parquets | 13,688,304 |
-| Curated annotation rows | 29,681 across 1,576 perturbations |
+|                             |                              v1.0 |
+|-----------------------------|----------------------------------:|
+| JUMP sources                |                                 6 |
+| Plates                      |                               557 |
+| Wells                       |                           213,881 |
+| Image sites                 |                           855,519 |
+| Channels                    |        5: AGP, DNA, ER, Mito, RNA |
+| Compressed image variants   |              4: Zstd, HQ, MQ, D20 |
+| Embedding variants          |                                16 |
+| Per-site embedding Parquets |                        13,688,304 |
+| Curated annotation rows     | 29,681 across 1,576 perturbations |
 
 The release covers `source_2`, `source_4`, `source_6`, `source_7`, `source_8`, and `source_13`, with at most four sites per well.
 
@@ -44,7 +44,7 @@ aws s3 cp --no-sign-request --recursive \
 
 ## What is included
 
-- **Images:** Zarr v2 stores for JPEG XL high quality (`jpegxl_lossy_hq`), medium quality (`jpegxl_lossy_mq`), and a high-compression control (`jpegxl_lossy_d20`). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading the arrays requires a JPEG XL NumCodecs implementation such as `imagecodecs`.
+- **Images:** a lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`), medium quality (`jpegxl_lossy_mq`), and high compression (`jpegxl_lossy_d20`). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
 - **Embeddings:** per-site long-form Parquets from DINOv2, randomly initialized DINOv2, MorphEm, OpenPhenom, and two SubCell input variants. These are site-level outputs, not aggregated well profiles.
 - **Metadata:** `jump_lite_site_index.parquet` is the primary index and links every compressed site to its five original JUMP TIFF URLs. The release also provides a channel-level image index, perturbation metadata, a plate manifest, and a machine-readable manifest.
 - **Annotations:** `jump_lite_refchem_annotations.parquet` contains the release-relevant RefChemDB/JUMP confidence matches, including targets, genes, activity fields, confidence tiers, and direction-match indicators.
@@ -70,7 +70,7 @@ The exact site set is frozen across all three image variants and every associate
 ```text
 public JUMP TIFFs
   → plate filtering and deterministic site selection
-  → JPEG XL site-major Zarr arrays
+  → lossless Zstd and JPEG XL site-major Zarr arrays
   → model-specific tiling and per-site embeddings
   → frozen metadata and annotation tables
   → cross-variant validation and CPG deposit

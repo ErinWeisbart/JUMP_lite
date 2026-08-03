@@ -23,6 +23,7 @@ DEFAULT_PROFILE_ROOT = Path(
     "/work/datasets/jump_lite/aliby_output/jump_lite_rerun/jump_lite_updated"
 )
 DEFAULT_METADATA_ROOT = Path("/work/datasets/jump_lite/cpg_release/metadata")
+DEFAULT_ZSTD_ROOT = Path("/work/datasets/jump_lite/zstd_rebuild/v1.0/zstd.zarr")
 CANONICAL_CODEC = "jpegxl_lossy_mq.zarr"
 IMAGE_CODECS = (
     "jpegxl_lossy_mq.zarr",
@@ -56,6 +57,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-root", type=Path, default=DEFAULT_IMAGE_ROOT)
     parser.add_argument("--profile-root", type=Path, default=DEFAULT_PROFILE_ROOT)
     parser.add_argument("--metadata-root", type=Path, default=DEFAULT_METADATA_ROOT)
+    parser.add_argument("--zstd-root", type=Path, default=DEFAULT_ZSTD_ROOT)
+    parser.add_argument(
+        "--require-zstd",
+        action="store_true",
+        help="fail unless the finalized lossless v1.0 Zstd store is present",
+    )
     parser.add_argument("--expected-sites", type=int, default=EXPECTED_SITE_COUNT)
     parser.add_argument(
         "--json-output",
@@ -86,6 +93,20 @@ def key_digest(keys: set[str]) -> str:
     return hashlib.sha256("\n".join(sorted(keys)).encode()).hexdigest()
 
 
+def zarr_v3_array_complete(path: Path) -> bool:
+    metadata_path = path / "zarr.json"
+    chunk_root = path / "c"
+    if not metadata_path.is_file() or not chunk_root.is_dir():
+        return False
+    try:
+        metadata = json.loads(metadata_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    return metadata.get("node_type") == "array" and any(
+        entry.is_file() for entry in chunk_root.rglob("*")
+    )
+
+
 def sql_path(path: Path) -> str:
     return str(path.resolve()).replace("'", "''")
 
@@ -112,6 +133,7 @@ def main() -> int:
     report: dict[str, object] = {
         "validated_at": datetime.now(timezone.utc).isoformat(),
         "image_root": str(args.image_root),
+        "zstd_root": str(args.zstd_root),
         "profile_root": str(args.profile_root),
         "metadata_root": str(args.metadata_root),
     }
@@ -155,6 +177,37 @@ def main() -> int:
             "missing_canonical_sites": len(missing),
             "extra_sites": len(extra),
         }
+
+    if args.require_zstd or args.zstd_root.exists():
+        require(args.zstd_root.is_dir(), f"Missing finalized Zstd dataset: {args.zstd_root}")
+        if args.zstd_root.is_dir():
+            zstd_keys = directory_keys(args.zstd_root)
+            missing = canonical_keys - zstd_keys
+            extra = zstd_keys - canonical_keys
+            require(
+                not missing and not extra,
+                "Image keys differ for zstd.zarr: "
+                f"missing={len(missing):,}, extra={len(extra):,}",
+            )
+            require(
+                (args.zstd_root / "zarr.json").is_file(),
+                f"Missing Zarr v3 group metadata: {args.zstd_root}",
+            )
+            incomplete = [
+                key for key in zstd_keys if not zarr_v3_array_complete(args.zstd_root / key)
+            ]
+            require(
+                not incomplete,
+                f"Zstd contains incomplete arrays: {incomplete[:10]}",
+            )
+            image_report["zstd.zarr"] = {
+                "zarr_format": 3,
+                "site_count": len(zstd_keys),
+                "site_key_sha256": key_digest(zstd_keys),
+                "missing_canonical_sites": len(missing),
+                "extra_sites": len(extra),
+                "incomplete_sites": len(incomplete),
+            }
     report["images"] = image_report
 
     discovered = actual_profile_variants(args.profile_root)
