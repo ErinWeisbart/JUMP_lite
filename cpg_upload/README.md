@@ -92,8 +92,11 @@ complete finalization checklist is below.
   report for the concurrent Zstd upload.
 - `systemd/*.service`: persistent user-service definitions that resume the CPG
   upload, Zstd rebuild, and Zstd upload after the user manager starts.
-- `verify_staging.sh`: compares local file count with the recursive staging
-  object count after each sync.
+- `verify_staging.sh`: compares one local directory's file count with one
+  recursive staging object count.
+- `verify_complete_staging.py`: restart-safe, read-only final audit of all three
+  JPEG XL and all 16 transformed embedding prefixes. It compares both object
+  counts and bytes and checkpoints each completed prefix.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
   the metadata builder and uploaded with the release.
 
@@ -441,12 +444,22 @@ After transfer, compare local and staging object counts:
 cpg_upload/verify_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 ```
 
-Embedding variants require counting their transformed S3 prefix and comparing
-against 855,519 objects each. `verify_staging.sh` can do this using a local
-profile directory and its transformed destination prefix because only the count
-is compared. Repeat it for all 16 variants. Recursive S3 counts can take a long
-time; let them finish rather than substituting checkpoint counts for remote
-verification.
+For the complete bulk audit, install the restart-safe verification service:
+
+```bash
+ln -sfn "$PWD/cpg_upload/systemd/jump-lite-staging-verify.service" \
+  ~/.config/systemd/user/jump-lite-staging-verify.service
+systemctl --user daemon-reload
+systemctl --user enable --now jump-lite-staging-verify.service
+journalctl --user -fu jump-lite-staging-verify.service
+```
+
+The service compares exact local/checkpoint object counts and byte totals for
+all three JPEG XL stores and all 16 transformed embedding prefixes. It writes
+`/work/datasets/jump_lite/cpg_release/staging_bulk_verification.json` after each
+completed prefix, so a restart skips already verified prefixes. Recursive S3
+listing covers roughly 21 million objects and can take well over 30 minutes.
+Do not substitute upload checkpoint counts for this remote verification.
 
 ## 11. Finalize and hand off a release
 
@@ -499,9 +512,12 @@ Use this checklist after all bulk transfers stop changing:
    services so a future login does not launch another no-op scan:
 
    ```bash
-   systemctl --user disable --now jump-lite-cpg-upload.service
-   systemctl --user disable --now jump-lite-zstd-rebuild.service
-   systemctl --user disable --now jump-lite-zstd-upload.service
+   systemctl --user stop jump-lite-cpg-upload.service \
+     jump-lite-zstd-rebuild.service jump-lite-zstd-upload.service \
+     jump-lite-staging-verify.service
+   systemctl --user disable jump-lite-cpg-upload.service \
+     jump-lite-zstd-rebuild.service jump-lite-zstd-upload.service \
+     jump-lite-staging-verify.service
    ```
 
 Do not modify a promoted version in place. Corrections after promotion require
@@ -528,7 +544,8 @@ v1.1 or another iteration:
    `upload_profiles_to_staging.py`, `upload_status.sh`,
    `rebuild_zstd_from_originals.py`, `zstd_rebuild_status.sh`,
    `upload_zstd_to_staging.py`, `zstd_upload_status.sh`,
-   `validate_release.py`, and both READMEs. A future refactor should expose one
+   `verify_complete_staging.py`, `validate_release.py`, and both READMEs. A
+   future refactor should expose one
    shared release-version/config object instead of duplicating these constants.
 5. Revisit the explicit zero-filled TIFF allowlist. Remove entries excluded by
    corrected upstream metadata; never broaden it to accept arbitrary corrupt
