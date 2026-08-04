@@ -13,10 +13,52 @@ All compressed image datasets and every corresponding per-site Parquet variant
 must contain the exact same frozen set of 855,519 site keys. The MQ Zarr is the
 canonical set for this release.
 
-Uploads must use either `upload_to_staging.sh` for a single unchanged directory
-or `run_background_upload.sh` for the complete release. Both workflows are
-gated by `validate_release.py` and exit before S3 writes if any inconsistency is
-found.
+Uploads must use `upload_to_staging.sh` for one unchanged directory,
+`run_background_upload.sh` for the main release, or the checkpoint-aware
+`upload_zstd_to_staging.py` for a concurrently changing Zstd build. The normal
+workflows run `validate_release.py` before writes. The Zstd workflow instead
+uploads only builder-checkpoint-confirmed arrays, withholds the group root, and
+performs full local and remote validation before making the store complete.
+
+## Quick runbook
+
+From the repository root, the normal order for a release is:
+
+```bash
+# 0. Keep user services alive after SSH logout (one-time, requires permission).
+sudo loginctl enable-linger "$USER"
+loginctl show-user "$USER" -p Linger
+
+# 1. Audit identities; review any discrepancy before applying a repair.
+.venv/bin/python cpg_upload/reconcile_site_sets.py
+
+# 2. Freeze metadata and run the fail-closed preflight.
+.venv/bin/python cpg_upload/build_cpg_metadata.py
+.venv/bin/python cpg_upload/validate_release.py
+
+# 3. Install services once, then start the main release upload.
+mkdir -p ~/.config/systemd/user
+for unit in jump-lite-cpg-upload jump-lite-zstd-rebuild jump-lite-zstd-upload; do
+  ln -sfn "$PWD/cpg_upload/systemd/$unit.service" \
+    "$HOME/.config/systemd/user/$unit.service"
+done
+systemctl --user daemon-reload
+systemctl --user enable --now jump-lite-cpg-upload.service
+
+# 4. If the release includes Zstd, overlap rebuilding and transfer.
+systemctl --user enable --now jump-lite-zstd-rebuild.service
+systemctl --user enable --now jump-lite-zstd-upload.service
+
+# 5. Monitor read-only status.
+cpg_upload/upload_status.sh
+cpg_upload/zstd_rebuild_status.sh
+cpg_upload/zstd_upload_status.sh
+```
+
+Do not notify the CPG maintainer merely because site uploads reach 100%. Wait
+for final local validation, publication of the root Zarr metadata, recursive S3
+verification, refreshed release metadata, and the final validation report. The
+complete finalization checklist is below.
 
 ## Files
 
@@ -55,7 +97,7 @@ found.
 - `JUMP_LITE_README.md`: dataset-facing README copied to the release root by
   the metadata builder and uploaded with the release.
 
-## 1. Reconcile the current site discrepancy
+## 1. Reconcile site sets when inputs change
 
 Audit only:
 
@@ -63,23 +105,26 @@ Audit only:
 python cpg_upload/reconcile_site_sets.py
 ```
 
-The current repair requires write ACLs on the 274 surplus HQ/D20 image-array
-directories. Generate their paths with:
+For v1.0, this audit found 274 surplus HQ/D20 image-array directories and 1,370
+matching surplus Parquets. They were moved to a timestamped quarantine rather
+than deleted. If a future audit reports a discrepancy, first save its output
+and review whether the canonical manifest intentionally changed. To print paths
+that require write ACLs:
 
 ```bash
 python cpg_upload/reconcile_site_sets.py \
   --print-surplus-image-paths > /tmp/jump_lite_surplus_image_paths.txt
 ```
 
-After an administrator grants access to those paths, apply the reversible
-repair:
+Only after review and, if necessary, an administrator grants access, apply the
+reversible repair:
 
 ```bash
 python cpg_upload/reconcile_site_sets.py --apply
 ```
 
 Surplus entries are moved under `/work/datasets/jump_lite/quarantine/` with a
-JSON manifest.
+JSON manifest. Never delete or reuse a quarantine while preparing a release.
 
 ## 2. Build frozen release metadata
 
@@ -89,7 +134,11 @@ python cpg_upload/build_cpg_metadata.py
 
 This deliberately uses the existing MQ keys rather than resampling sites. It
 writes wide and tidy image indices, perturbation metadata, release-filtered
-annotations, a plate manifest, and a metadata manifest.
+annotations, a plate manifest, and a metadata manifest. It also copies
+`cpg_upload/JUMP_LITE_README.md` to
+`/work/datasets/jump_lite/cpg_release/README.md` and records its byte size.
+Therefore rerun this command after every dataset-facing README change and before
+the final metadata sync.
 
 ## 3. Validate
 
@@ -98,7 +147,18 @@ python cpg_upload/validate_release.py
 ```
 
 A successful validation reports `CPG release status: ready` and exits zero.
-Anything else blocks upload.
+Anything else blocks upload. Before Zstd exists, the default validates the
+three JPEG XL stores, embeddings, and metadata. For a final release that
+requires the completed lossless store, use:
+
+```bash
+python cpg_upload/validate_release.py \
+  --require-zstd \
+  --json-output /work/datasets/jump_lite/cpg_release/final_validation_report.json
+```
+
+The finalized Zstd store is also validated automatically whenever its final
+path exists.
 
 ## 4. CPG object layout
 
@@ -118,6 +178,17 @@ The image codecs are lossless `zstd` plus `jpegxl_lossy_mq`,
 wide and tidy image indices, perturbation metadata, RefChemDB annotations, plate
 manifest, and release manifest.
 
+Frozen v1.0 facts useful for auditing:
+
+| Invariant | Value |
+|---|---:|
+| Sites per image/embedding variant | 855,519 |
+| Site-key SHA-256 | `399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961` |
+| Embedding variants | 16 |
+| Embedding Parquets | 13,688,304 |
+| Final Zstd objects | 1,711,039 |
+| Final Zstd bytes | 6,105,823,136,762 (6.106 TB; 5.553 TiB) |
+
 Local embedding files are flat and named:
 
 ```text
@@ -135,7 +206,16 @@ indices and are not duplicated under `source_all`.
 
 ## 5. Activate temporary CPG credentials
 
-Install AWS CLI v2 first, then source:
+The maintainer-provided long-lived grant files are expected at
+`~/.cpg_key_id` and `~/.cpg_access_key`. Keep them outside the repository and
+restrict their permissions:
+
+```bash
+chmod 600 ~/.cpg_key_id ~/.cpg_access_key
+```
+
+Install AWS CLI v2 first, then source temporary credentials only for manual
+commands:
 
 ```bash
 source cpg_upload/activate_cpg_credentials.sh
@@ -153,6 +233,10 @@ AWS CLI v2 can be used without permanent installation through:
 ```bash
 nix shell nixpkgs#awscli2
 ```
+
+Never print, log, commit, or pass the long-lived keys on a command line. The
+Python uploaders request and refresh their own temporary credentials; systemd
+services do not need a manually sourced shell environment.
 
 ## 6. Run the complete upload in the background
 
@@ -224,6 +308,15 @@ TIFF URLs per site. For each site, the builder:
 4. writes one `(5, y, x)` Zarr v3 array and one Blosc/Zstd level-9 chunk; and
 5. checkpoints progress after each bounded batch.
 
+Four `source_7` inputs are known zero-filled objects rather than TIFFs: ER for
+`CP3-SC1-18/I22/site 2`, and DNA, Mito, and RNA for site 3. They share the
+frozen size/ETag documented in
+[jump-cellpainting/datasets#177](https://github.com/jump-cellpainting/datasets/issues/177).
+The builder permits a zero-plane reconstruction only for those exact
+URI/size/ETag combinations; every other undecodable TIFF remains a hard error.
+Keep this exception list explicit and remove it when corrected upstream
+metadata excludes those sites.
+
 The original image-store parent is not writable by the uploader, so the
 resumable building store, validated replacement, and state are kept at:
 
@@ -263,7 +356,73 @@ State is stored at
 destination is
 `cpg0016-jump/source_all/images_compressed/jump_lite/v1.0/zstd.zarr/`.
 
-## 8. Upload one unchanged directory
+A builder restart scans the manifest from its beginning and skips existing
+complete arrays. Its displayed `processed_manifest_sites` may therefore fall
+from a large number to zero; this is a rescan, not lost data. The streaming
+uploader waits whenever that safe checkpoint falls behind its own upload
+checkpoint and resumes automatically after the scan catches up. Do not edit
+either checkpoint by hand.
+
+## 8. Monitor, interrupt, and recover
+
+Useful read-only commands:
+
+```bash
+systemctl --user --no-pager status jump-lite-cpg-upload.service
+systemctl --user --no-pager status jump-lite-zstd-rebuild.service
+systemctl --user --no-pager status jump-lite-zstd-upload.service
+
+journalctl --user -fu jump-lite-cpg-upload.service
+journalctl --user -fu jump-lite-zstd-rebuild.service
+journalctl --user -fu jump-lite-zstd-upload.service
+
+cpg_upload/upload_status.sh
+cpg_upload/zstd_rebuild_status.sh
+cpg_upload/zstd_upload_status.sh
+```
+
+Durable state and logs are deliberately outside the repository:
+
+| Component | Checkpoint/state | Timestamped logs |
+|---|---|---|
+| Embeddings/main release | `/work/datasets/jump_lite/cpg_upload_state/v1.0/` | `/work/datasets/jump_lite/cpg_upload_logs/` |
+| Zstd rebuild | `/work/datasets/jump_lite/zstd_rebuild_state/v1.0/` | `/work/datasets/jump_lite/zstd_rebuild_logs/` |
+| Zstd upload | `/work/datasets/jump_lite/cpg_upload_state/v1.0/zstd/` | `/work/datasets/jump_lite/zstd_upload_logs/` |
+
+A final SSH logout with `Linger=no` cleanly stops the entire user manager and
+all three services. Enabled services resume on the next login, but long jobs do
+not run while logged out. Check and fix this before starting:
+
+```bash
+loginctl show-user "$USER" -p Linger
+sudo loginctl enable-linger "$USER"
+```
+
+If a process fails, inspect the newest log and `FAILED` marker before restarting:
+
+```bash
+readlink -f /work/datasets/jump_lite/zstd_rebuild_logs/latest
+systemctl --user restart jump-lite-zstd-rebuild.service
+```
+
+Restarts are expected to rescan local files and safely skip completed work.
+Never remove checkpoints merely to make a status display look current. Never
+use `aws s3 sync --delete`; partial staging objects and local quarantine data
+are evidence needed for recovery.
+
+Expected terminal states are:
+
+- `upload_status.sh`: `Overall state: COMPLETE` and all 16 profile checkpoints
+  at `855,519/855,519`;
+- `zstd_rebuild_status.sh`: `State: COMPLETE`, `complete: 1`, and final path
+  `.../zstd.zarr`;
+- `zstd_upload_status.sh`: `Run state: COMPLETE`, `complete: true`,
+  `root_metadata_published: true`, and a `remote_verification` block.
+
+A service becoming `inactive (dead)` with `Result=success` after reaching one
+of these states is normal completion, not a crash.
+
+## 9. Upload one unchanged directory
 
 For a one-component dry run:
 
@@ -274,7 +433,7 @@ cpg_upload/upload_to_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 Add `--apply` only after reviewing its destination. Destination arguments are
 relative to `cpg0016-jump/source_all/`.
 
-## 9. Verify staging
+## 10. Verify staging
 
 After transfer, compare local and staging object counts:
 
@@ -283,9 +442,112 @@ cpg_upload/verify_staging.sh LOCAL_PATH RELATIVE_DESTINATION
 ```
 
 Embedding variants require counting their transformed S3 prefix and comparing
-against 855,519 objects each. Only notify the CPG maintainer after all 16
-embedding variants, all four image stores, and metadata pass verification and
-the complete release passes `validate_release.py` again.
+against 855,519 objects each. `verify_staging.sh` can do this using a local
+profile directory and its transformed destination prefix because only the count
+is compared. Repeat it for all 16 variants. Recursive S3 counts can take a long
+time; let them finish rather than substituting checkpoint counts for remote
+verification.
+
+## 11. Finalize and hand off a release
+
+Use this checklist after all bulk transfers stop changing:
+
+1. Confirm the three terminal states listed above. For Zstd, 100% of site
+   objects is not enough: wait for root metadata publication and the built-in
+   remote object/byte verification.
+2. Update `cpg_upload/JUMP_LITE_README.md` with final sizes, anomalies, and
+   citations, then rebuild the release metadata:
+
+   ```bash
+   .venv/bin/python cpg_upload/build_cpg_metadata.py
+   ```
+
+3. Run and retain the final fail-closed report:
+
+   ```bash
+   .venv/bin/python cpg_upload/validate_release.py \
+     --require-zstd \
+     --json-output /work/datasets/jump_lite/cpg_release/final_validation_report.json
+   ```
+
+4. Upload the refreshed README and metadata together. Build a temporary view so
+   `README.md` shares the metadata version prefix without mutating the frozen
+   metadata directory:
+
+   ```bash
+   metadata_view=$(mktemp -d)
+   cp -a /work/datasets/jump_lite/cpg_release/metadata/. "$metadata_view/"
+   cp /work/datasets/jump_lite/cpg_release/README.md "$metadata_view/README.md"
+
+   # Enter a shell that has AWS CLI v2 if needed, then activate temporary keys.
+   source cpg_upload/activate_cpg_credentials.sh
+   cpg_upload/upload_to_staging.sh --apply \
+     "$metadata_view" workspace/metadata/jump_lite/v1.0
+   rm -rf "$metadata_view"
+   ```
+
+5. Verify metadata, each JPEG XL store, all transformed embedding prefixes, and
+   the Zstd uploader's final report. Record counts, byte totals, validation
+   digest, and verification timestamps in the handoff note.
+6. Commit and push only the intended scripts/docs. Preserve unrelated working
+   tree files. Tag the release only after the deposited README and manifest
+   match staging.
+7. Notify the CPG maintainer with the staging prefix, version, canonical digest,
+   validation report, object counts, final sizes, and known upstream issues.
+   Promotion to the public bucket is a maintainer action.
+8. After every final verification is recorded, disable completed one-shot
+   services so a future login does not launch another no-op scan:
+
+   ```bash
+   systemctl --user disable --now jump-lite-cpg-upload.service
+   systemctl --user disable --now jump-lite-zstd-rebuild.service
+   systemctl --user disable --now jump-lite-zstd-upload.service
+   ```
+
+Do not modify a promoted version in place. Corrections after promotion require
+agreement with the CPG maintainer and normally a new version.
+
+## 12. Prepare a future version
+
+The current scripts intentionally freeze v1.0 paths, counts, and digest. Before
+v1.1 or another iteration:
+
+1. Agree on the public CPG layout and version with the maintainer.
+2. Generate the proposed site manifest deterministically and review its count,
+   source/plate/well totals, and sorted-key digest. Do not reuse v1.0's MQ keys
+   accidentally.
+3. Create new local build, state, checkpoint, and log namespaces. Never point a
+   new version at `cpg_upload_state/v1.0` or `zstd_rebuild/v1.0`.
+4. Audit every hard-coded version, count, and digest before any write:
+
+   ```bash
+   rg -n 'v1\.0|855_519|855,519|399e703b' cpg_upload
+   ```
+
+   In particular update `run_background_upload.sh`,
+   `upload_profiles_to_staging.py`, `upload_status.sh`,
+   `rebuild_zstd_from_originals.py`, `zstd_rebuild_status.sh`,
+   `upload_zstd_to_staging.py`, `zstd_upload_status.sh`,
+   `validate_release.py`, and both READMEs. A future refactor should expose one
+   shared release-version/config object instead of duplicating these constants.
+5. Revisit the explicit zero-filled TIFF allowlist. Remove entries excluded by
+   corrected upstream metadata; never broaden it to accept arbitrary corrupt
+   inputs.
+6. Run reconciliation and all upload commands in audit/dry-run mode first.
+   Review sample local-to-S3 mappings and confirm that the destination contains
+   the new version before using `--apply`.
+7. Syntax-check and inspect the exact diff:
+
+   ```bash
+   .venv/bin/python -m py_compile cpg_upload/*.py
+   for script in cpg_upload/*.sh; do bash -n "$script"; done
+   git diff --check
+   git status --short
+   ```
+
+8. Start with metadata or a bounded test prefix where possible, verify it, then
+   launch the restart-safe services. Preserve the previous public and local
+   release unchanged.
 
 ## Deterministic prevention
 

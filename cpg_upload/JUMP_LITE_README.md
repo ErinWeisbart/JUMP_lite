@@ -104,6 +104,16 @@ Four compressed image variants are included:
 | `jpegxl_lossy_mq.zarr` | Zarr v2, JPEG XL distance 3.0 | 116 GB | Medium quality and canonical site manifest |
 | `jpegxl_lossy_d20.zarr` | Zarr v2, JPEG XL distance 20.0 | 32 GB | High-compression comparison variant |
 
+The finalized `zstd.zarr` contains 1,711,039 loose objects and totals exactly
+6,105,823,136,762 bytes (6.106 TB; 5.553 TiB).
+
+Four public `source_7` objects are permanently zero-filled rather than valid
+TIFFs: ER for `CP3-SC1-18/I22/site 2`, and DNA, Mito, and RNA for
+`CP3-SC1-18/I22/site 3`. For only those four URI/size/ETag combinations, the
+lossless builder writes zero-valued `1080 × 1280` `uint16` planes; all other
+channels are decoded directly from their original TIFFs. The metadata problem
+is tracked in [jump-cellpainting/datasets#177](https://github.com/jump-cellpainting/datasets/issues/177).
+
 The JPEG XL arrays are lossy derivatives and should not be interpreted as
 replacing the original JUMP TIFFs. Their decoding requires a Zarr-compatible
 registration of the `imagecodecs_jpegxl` codec, such as

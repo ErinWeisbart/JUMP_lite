@@ -48,6 +48,27 @@ from validate_release import (
 )
 
 CHANNELS = ("AGP", "DNA", "ER", "Mito", "RNA")
+# This public object is permanently zero-filled rather than a valid TIFF. Its
+# local raw copy and S3 ETag/size agree. Reconstruct only this exact channel as
+# a zero plane using the canonical site schema; any other invalid TIFF remains
+# a hard failure.
+_ZERO_FILLED_SOURCE_7_PREFIX = (
+    "s3://cellpainting-gallery/cpg0016-jump/source_7/images/20210727_Run3/"
+    "images/CP3-SC1-18/"
+)
+_ZERO_FILLED_SOURCE_7_NAMES = (
+    "CP3-SC1-18_I22_T0001F003L01A03Z01C04.tif",  # site 2, ER
+    "CP3-SC1-18_I22_T0001F004L01A01Z01C01.tif",  # site 3, DNA
+    "CP3-SC1-18_I22_T0001F004L01A01Z01C02.tif",  # site 3, Mito
+    "CP3-SC1-18_I22_T0001F004L01A02Z01C03.tif",  # site 3, RNA
+)
+KNOWN_ZERO_FILLED_TIFFS = {
+    _ZERO_FILLED_SOURCE_7_PREFIX + name: {
+        "etag": "d4ffe90e54a5af4e2009e5984da69f03",
+        "size": 2_768_896,
+    }
+    for name in _ZERO_FILLED_SOURCE_7_NAMES
+}
 CANONICAL_DIGEST = "399e703bc924a19f7c3827db3c711373306e3d943d2f12cf56d0a368f5d13961"
 DEFAULT_INDEX = DEFAULT_METADATA_ROOT / "jump_lite_site_index.parquet"
 DEFAULT_REBUILD_ROOT = Path("/work/datasets/jump_lite/zstd_rebuild/v1.0")
@@ -139,6 +160,16 @@ def unsigned_s3_client() -> Any:
     return client
 
 
+def reset_unsigned_s3_client() -> None:
+    """Discard a worker's client after a corrupt or broken response."""
+    client = getattr(_thread_local, "s3_client", None)
+    if client is not None:
+        try:
+            client.close()
+        finally:
+            delattr(_thread_local, "s3_client")
+
+
 def parse_s3_uri(uri: str) -> tuple[str, str]:
     parsed = urlparse(uri)
     if parsed.scheme != "s3" or not parsed.netloc or not parsed.path:
@@ -146,12 +177,41 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
     return parsed.netloc, parsed.path.lstrip("/")
 
 
-def download_tiff(uri: str, max_attempts: int = 20) -> tuple[np.ndarray, int]:
+def download_tiff(
+    uri: str,
+    max_attempts: int = 20,
+    *,
+    expected_shape: Sequence[int] | None = None,
+    expected_dtype: str | None = None,
+) -> tuple[np.ndarray, int]:
     bucket, key = parse_s3_uri(uri)
     for attempt in range(1, max_attempts + 1):
         try:
             response = unsigned_s3_client().get_object(Bucket=bucket, Key=key)
             payload = response["Body"].read()
+            expected_length = int(response.get("ContentLength", len(payload)))
+            if len(payload) != expected_length:
+                raise OSError(
+                    f"truncated S3 payload for {uri}: {len(payload)} != {expected_length}"
+                )
+            known_zero = KNOWN_ZERO_FILLED_TIFFS.get(uri)
+            if known_zero is not None and payload and not any(payload):
+                etag = str(response.get("ETag", "")).strip('"')
+                if (
+                    len(payload) != known_zero["size"]
+                    or etag != known_zero["etag"]
+                    or expected_shape is None
+                    or expected_dtype is None
+                ):
+                    raise RuntimeError(
+                        f"zero-filled TIFF identity/schema mismatch for {uri}"
+                    )
+                print(
+                    f"[{now()}] reconstructing known zero-filled TIFF as a zero plane: {uri}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return np.zeros(tuple(expected_shape), dtype=np.dtype(expected_dtype)), len(payload)
             image = tifffile.imread(io.BytesIO(payload))
             if image.ndim != 2:
                 raise ValueError(f"expected a 2D TIFF at {uri}; got shape {image.shape}")
@@ -162,9 +222,21 @@ def download_tiff(uri: str, max_attempts: int = 20) -> tuple[np.ndarray, int]:
                 raise
             if attempt == max_attempts:
                 raise
-        except (BotoCoreError, ConnectionClosedError, OSError):
+        except (BotoCoreError, ConnectionClosedError, tifffile.TiffFileError, OSError) as error:
+            # A truncated or transiently corrupt payload can return HTTP 200 but
+            # fail TIFF decoding. Reusing that connection repeatedly produced
+            # the same invalid zero header, so force a fresh client and endpoint.
+            reset_unsigned_s3_client()
             if attempt == max_attempts:
-                raise
+                raise RuntimeError(
+                    f"failed to download a valid TIFF after {max_attempts} attempts: {uri}"
+                ) from error
+            print(
+                f"[{now()}] retrying TIFF attempt={attempt}/{max_attempts} "
+                f"error={type(error).__name__} uri={uri}",
+                file=sys.stderr,
+                flush=True,
+            )
         time.sleep(min(60.0, 0.5 * (2 ** min(attempt, 7))))
     raise AssertionError("unreachable")
 
@@ -220,7 +292,11 @@ def build_site(
     images: list[np.ndarray] = []
     downloaded = 0
     for uri in urls:
-        image, size = download_tiff(uri)
+        image, size = download_tiff(
+            uri,
+            expected_shape=expected_shape[1:],
+            expected_dtype=expected_dtype,
+        )
         images.append(image)
         downloaded += size
 

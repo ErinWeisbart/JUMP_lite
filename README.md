@@ -14,6 +14,7 @@
 | Image sites                 |                           855,519 |
 | Channels                    |        5: AGP, DNA, ER, Mito, RNA |
 | Compressed image variants   |              4: Zstd, HQ, MQ, D20 |
+| Lossless Zstd store         |          6.106 TB (5.553 TiB) |
 | Embedding variants          |                                16 |
 | Per-site embedding Parquets |                        13,688,304 |
 | Curated annotation rows     | 29,681 across 1,576 perturbations |
@@ -44,7 +45,7 @@ aws s3 cp --no-sign-request --recursive \
 
 ## What is included
 
-- **Images:** a lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`), medium quality (`jpegxl_lossy_mq`), and high compression (`jpegxl_lossy_d20`). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
+- **Images:** a 6.106 TB (5.553 TiB) lossless Zarr v3 store (`zstd`) plus Zarr v2 JPEG XL stores at high quality (`jpegxl_lossy_hq`), medium quality (`jpegxl_lossy_mq`), and high compression (`jpegxl_lossy_d20`). Each site is one unsigned 16-bit `(channel, y, x)` array. Reading JPEG XL arrays requires a compatible NumCodecs implementation such as `imagecodecs`.
 - **Embeddings:** per-site long-form Parquets from DINOv2, randomly initialized DINOv2, MorphEm, OpenPhenom, and two SubCell input variants. These are site-level outputs, not aggregated well profiles.
 - **Metadata:** `jump_lite_site_index.parquet` is the primary index and links every compressed site to its five original JUMP TIFF URLs. The release also provides a channel-level image index, perturbation metadata, a plate manifest, and a machine-readable manifest.
 - **Annotations:** `jump_lite_refchem_annotations.parquet` contains the release-relevant RefChemDB/JUMP confidence matches, including targets, genes, activity fields, confidence tiers, and direction-match indicators.
